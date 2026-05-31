@@ -127,8 +127,11 @@ async def list_models() -> list[dict]:
         data = resp.json()
     models = []
     for m in data.get("model_configs", []):
+        name = m.get("name") or m.get("model_name") or m.get("id", "")
+        if not name:
+            continue
         models.append({
-            "id": m.get("model_name", m.get("id", "")),
+            "id": name,
             "object": "model",
             "created": int(time.time()),
             "owned_by": "trae",
