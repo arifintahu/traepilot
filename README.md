@@ -23,8 +23,8 @@ Exposes Trae's LLMs as a standard /v1/chat/completions endpoint. Cherry Studio, 
 
     git clone https://github.com/arifintahu/traepilot.git
     cd traepilot
-    python3 -m venv .venv
-    source .venv/bin/activate
+    python -m venv .venv
+    source .venv/Scripts/activate
     pip install -r requirements.txt
     cp .env.example .env
 
