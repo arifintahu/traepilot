@@ -8,7 +8,9 @@ OpenAI-compatible proxy for Trae IDE subscription models.
 
 ## What It Does
 
-Exposes Trae's LLMs as a standard /v1/chat/completions endpoint. Cherry Studio, Cline, Continue, and any OpenAI-compatible client can use Trae's models with zero changes.
+Exposes Trae's live model catalog as a standard OpenAI-compatible `/v1/models` endpoint and validates your Trae credentials against the upstream API.
+
+> **Chat is not supported** — `/v1/chat/completions` returns `501`. Trae serves chat over a proprietary native protocol that can't be proxied. See [Known limitations](#known-limitations).
 
 ---
 
@@ -115,9 +117,21 @@ Point any OpenAI-compatible client at http://127.0.0.1:8787/v1.
 
 ---
 
+## Known limitations
+
+**Chat completions are not supported** — `/v1/chat/completions` returns `501`.
+
+Trae does not expose an OpenAI-compatible chat API. Chat runs through a native `ai-agent` binary that calls `POST /api/ide/v2/llm_raw_chat` over ByteDance's TTNet stack. That path:
+
+- is an agent protocol (tools, sessions, server-side prompt pipeline) — not a plain completion;
+- is assembled and sent inside a native binary; its request body is not logged (privacy mode) and bypasses HTTP proxies (TTNet ignores `HTTPS_PROXY`), so it can't be captured or replayed;
+- uses a different catalog than `/v1/models` (chat exposes models like `minimax-m2.7` that `model_list` doesn't return).
+
+**What works:** `/v1/models` (live catalog) and `/health`, with full credential/header validation against Trae's API. Reviving chat would require reverse-engineering the native agent protocol, and would break on Trae updates.
+
 ## Breakage Notice
 
-When Trae updates, check build_trae_payload() and trae_events() in trae_client.py first.
+When Trae updates, check `list_models()` headers in trae_client.py and the credential extraction in auth.py first.
 
 ---
 
