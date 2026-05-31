@@ -55,6 +55,36 @@ See .env.example for the full list.
 
 ---
 
+## Getting Credentials
+
+`TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, and `TRAE_DEVICE_ID` come from Trae local SQLite DB (requires active Trae subscription).
+
+### Option A: Auto-extract (Trae installed locally)
+
+    python auth.py >> .env
+
+Reads the DB and appends credentials to `.env`.
+
+### Option B: Manual via sqlite3
+
+**DB path:**
+- Linux/macOS: `~/.trae/User/globalStorage/state.vscdb`
+- Windows: `%APPDATA%\trae\User\globalStorage\state.vscdb`
+
+**Query:**
+
+    sqlite3 PATH_TO_DB "SELECT value FROM ItemTable WHERE key=trae.account.ideToken;"
+
+Result is JSON. Map fields:
+
+- `token` → `TRAE_IDE_TOKEN`
+- `machineId` → `TRAE_MACHINE_ID`
+- `deviceId` → `TRAE_DEVICE_ID`
+
+> If Trae logs you out or rotates the token, re-run `auth.py` and update `.env`.
+
+---
+
 ## Usage
 
 Point any OpenAI-compatible client at http://127.0.0.1:8080/v1.
