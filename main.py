@@ -43,19 +43,26 @@ async def get_models():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(req: ChatCompletionRequest):
-    # Not supported. Trae serves chat through a native agent protocol
-    # (POST /api/ide/v2/llm_raw_chat, handled by Trae's ai-agent binary over
-    # ByteDance's TTNet stack). It is not OpenAI-compatible, the request body is
-    # assembled inside a native binary, and the call bypasses HTTP proxies, so it
-    # cannot be replayed here. /v1/models and /health work. See README.
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "chat/completions is not supported: Trae routes chat through a native "
-            "agent protocol (/api/ide/v2/llm_raw_chat) that is not OpenAI-compatible "
-            "and cannot be proxied. /v1/models and /health do work."
-        ),
-    )
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+
+    if req.stream:
+        async def event_stream():
+            try:
+                async for chunk in stream_completion(messages, req.model, req.max_tokens):
+                    if chunk == "[DONE]":
+                        yield "data: [DONE]\n\n"
+                    else:
+                        yield chunk
+            except Exception as e:
+                err = {"error": {"message": str(e), "type": "upstream_error"}}
+                yield f"data: {json.dumps(err)}\n\n"
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    try:
+        result = await non_stream_completion(messages, req.model, req.max_tokens)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return JSONResponse(result)
 
 
 @app.get("/health")
