@@ -8,6 +8,14 @@ BIND_HOST = os.getenv("BIND_HOST", "127.0.0.1")
 BIND_PORT = int(os.getenv("BIND_PORT", "8080"))
 API_KEY = os.getenv("API_KEY", "")
 
+# Model ids to hide from /v1/models (comma-separated). Defaults to the Claude ids
+# that return 4023 on accounts without Claude access.
+EXCLUDE_MODELS = {
+    m.strip()
+    for m in os.getenv("TRAE_EXCLUDE_MODELS", "claude3.5,aws_sdk_claude37_sonnet").split(",")
+    if m.strip()
+}
+
 _IDE_TOKEN = os.getenv("TRAE_IDE_TOKEN", "")
 
 # Mirror the headers Trae sends on every authenticated request. Empty values are

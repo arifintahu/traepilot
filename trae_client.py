@@ -2,7 +2,7 @@ import json
 import time
 import uuid
 import httpx
-from config import TRAE_BASE_URL, TRAE_HEADERS
+from config import TRAE_BASE_URL, TRAE_HEADERS, EXCLUDE_MODELS
 
 # Trae's chat-scene endpoint: a prompt-pipeline protocol that streams named SSE
 # events (output / done / error), not OpenAI SSE. Request format derived from the
@@ -176,7 +176,7 @@ async def list_models() -> list[dict]:
     models = []
     for m in data.get("model_configs", []):
         name = m.get("name") or m.get("model_name") or m.get("id", "")
-        if not name:
+        if not name or name in EXCLUDE_MODELS:
             continue
         models.append({"id": name, "object": "model", "created": int(time.time()), "owned_by": "trae"})
     return models
