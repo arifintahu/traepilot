@@ -146,7 +146,7 @@ If `API_KEY` is set in `.env`, add `-H "Authorization: Bearer <your-key>"`. On W
 ## Known limitations
 
 - **Some models may be unavailable to your account.** Chat uses Trae's `/api/ide/v1/chat` endpoint; a model your subscription/region doesn't grant returns an error. On the test account the Claude models (`claude3.5`, `aws_sdk_claude37_sonnet`) return code `4023`, while Gemini, GPT-4.x / GPT-4o, and DeepSeek all work.
-- **`/v1/models` is the legacy catalog.** It lists Trae's reachable `api/ide/v1/model_list` models (`claude3.5`, `gemini-2.5-pro`, `gpt-4.1`, `gpt-4o`, `deepseek-V3/R1`, …). Newer models shown in the Trae IDE (GPT-5.x, MiniMax, Gemini-3) are served by the IDE's native agent (`get_model_list`, not a reachable HTTP route), so they aren't listed — and `/api/ide/v1/chat` only accepts the legacy models.
+- **Newer models (GPT-5.x, Gemini-3, MiniMax, …) cannot be proxied.** They run through `POST /api/ide/.../api/agent/v3/create_agent_task`, not the legacy `/api/ide/v1/chat`. Verified by MITM capture (mitmproxy local mode): the API host does **not** cert-pin, but the agent **encrypts the request body at the application layer** via ByteDance's "aha" bridge transport (`x-bridge-transport: aha`, `x-request-pin`/`x-requested-at` envelope; decoded body entropy ≈ 8.0 with a decoy `content-type: application/json`). The response is plaintext SSE, but a valid request can't be forged without reversing the aha encryption (key derivation lives in the native agent binary). That's why no public proxy implements them and why `/v1/models` lists only the legacy catalog.
 - **The chat protocol is internal.** It's a prompt-pipeline request reverse-engineered from Trae's client, not a public API — a Trae update can change it.
 
 ## Breakage Notice
