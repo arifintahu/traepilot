@@ -640,7 +640,7 @@ async function loadConfig() {
         return `<tr>
           <td>${esc(k)}</td>
           <td><div class="masked-wrap">
-            <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${displayVal}</span>
+            <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${esc(displayVal)}</span>
             ${v === '(not set)' ? '' :
               `<button class="reveal-btn" onclick="revealCfg(this,'${esc(k)}')" aria-label="Reveal value for ${esc(k)}">👁 Reveal</button>`}
           </div></td>

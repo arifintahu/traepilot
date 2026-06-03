@@ -140,6 +140,8 @@ _MASKED = "••••••"
 
 
 def _mask(key: str) -> str:
+    # Returns "(not set)" vs "••••••" intentionally — callers can tell whether a
+    # key is configured without seeing its value. Auth required to reach this endpoint.
     val = os.getenv(key, "")
     if not val:
         return "(not set)"
