@@ -617,10 +617,11 @@ async function loadConfig() {
   const tbody = document.getElementById('config-table-body');
   tbody.innerHTML = Object.entries(data).map(([k, v]) => {
     if (SENSITIVE_KEYS.has(k)) {
+      const displayVal = (v === '(not set)') ? '(not set)' : '••••••';
       return `<tr>
         <td>${esc(k)}</td>
         <td><div class="masked-wrap">
-          <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${esc(v)}</span>
+          <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${displayVal}</span>
           ${v === '(not set)' ? '' :
             `<button class="reveal-btn" onclick="revealCfg(this,'${esc(k)}')" aria-label="Reveal value for ${esc(k)}">👁 Reveal</button>`}
         </div></td>
