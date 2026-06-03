@@ -95,19 +95,16 @@ def test_config_accepts_valid_bearer_token(authed_client):
 
 # ── /dashboard ───────────────────────────────────────────────────────────────
 
-@pytest.mark.skip(reason="GET /dashboard not yet implemented — Task 3")
 def test_dashboard_returns_200(client):
     resp = client.get("/dashboard")
     assert resp.status_code == 200
 
 
-@pytest.mark.skip(reason="GET /dashboard not yet implemented — Task 3")
 def test_dashboard_returns_html(client):
     resp = client.get("/dashboard")
     assert "text/html" in resp.headers["content-type"]
 
 
-@pytest.mark.skip(reason="GET /dashboard not yet implemented — Task 3")
 def test_dashboard_contains_traepilot(client):
     resp = client.get("/dashboard")
     assert b"TraePilot" in resp.content

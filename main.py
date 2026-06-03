@@ -171,6 +171,13 @@ async def get_config(
     }
 
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
+    with open(html_path, encoding="utf-8") as f:
+        return f.read()
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=BIND_HOST, port=BIND_PORT, reload=False)
