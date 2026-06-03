@@ -1,184 +1,223 @@
-# TraePilot
+# 🛩️ TraePilot
 
-OpenAI-compatible proxy for Trae IDE subscription models.
+**Use your Trae IDE subscription with any OpenAI-compatible client.**
 
-> Personal use only. Bind to 127.0.0.1 only - never expose publicly.
+Point Cherry Studio, Cline, Continue, or any OpenAI client at `http://127.0.0.1:8787/v1` and chat with Trae's models — no API key required, no extra cost.
 
----
-
-## What It Does
-
-Exposes Trae's subscription models as a standard OpenAI-compatible API. Point Cherry Studio, Cline, Continue, or any OpenAI client at it and use Trae's models — `/v1/chat/completions` (streaming and non-streaming) and `/v1/models`.
+> ⚠️ **Personal use only.** Binds to `127.0.0.1` — never expose publicly.
 
 ---
 
-## Requirements
+## 🤔 Why TraePilot?
 
-- Python 3.9+
-- Trae IDE with an active subscription
+Trae IDE has a great model subscription but locks you into its own chat UI. TraePilot bridges the gap:
 
----
-
-## Installation
-
-    git clone https://github.com/arifintahu/traepilot.git
-    cd traepilot
-    python -m venv .venv
-    source .venv/Scripts/activate
-    pip install -r requirements.txt
-    cp .env.example .env
-
-Fill in .env. If Trae is installed locally, auto-populate most values:
-
-    python auth.py --write
-
-Then start:
-
-    python main.py
+| Without TraePilot | With TraePilot |
+|---|---|
+| ❌ Trae models only in Trae's UI | ✅ Use Trae models in any client |
+| ❌ Can't use Cline / Continue / Cherry Studio | ✅ Drop-in OpenAI-compatible API |
+| ❌ No usage visibility | ✅ Local SQLite usage tracking |
 
 ---
 
-## Configuration
+## 📋 Prerequisites
 
-| Variable | Default | Description |
+| Requirement | Version | Notes |
 |---|---|---|
-| TRAE_BASE_URL | https://coresg-normal.trae.ai | Upstream API base (varies by region; `auth.py` reports yours) |
-| TRAE_IDE_TOKEN | required | Trae IDE auth token |
-| TRAE_MACHINE_ID | required | Machine ID from Trae |
-| TRAE_DEVICE_ID | required | Device ID from Trae |
-| PROXY_HOST | 127.0.0.1 | Bind address |
-| PROXY_PORT | 8787 | Bind port |
-| DEFAULT_MODEL } claude-3-7-sonnet | Fallback model |
-| LOG_LEVEL | INFO | Logging verbosity |
+| **Python** | 3.10+ | 3.10 minimum — uses `X \| Y` union types and `list[T]` generics |
+| **Trae IDE** | 2.x | Must be installed, signed in, and have an active subscription |
+| **Git** | any | For cloning the repo |
 
-See .env.example for the full list.
+> 💡 Python 3.9 and below are not supported. Check your version with `python --version`.
 
 ---
 
-## Getting Credentials
+## 🚀 Quick Start
 
-`TRAE_IDE_TOKEN` and the `x-*` ids come from Trae itself (requires an active, signed-in Trae). Current Trae (2.x) encrypts the account token in `storage.json`, so it can no longer be read from SQLite — `auth.py` instead reads the request headers that Trae's code-completion extension writes to its own log.
-
-### Option A: Auto-extract (recommended)
-
-    python auth.py            # preview: print KEY=VALUE lines for review
-    python auth.py --write    # fill .env in place
-
-`auth.py` finds Trae's newest `trae.ai-code-completion` log and takes the most recent request's headers. With `--write` it sets each matching key in `.env` in place — replacing the value, dropping duplicates, never appending — so re-running stays clean (pass a path to target a different file: `python auth.py --write path/to/.env`). It also reports the API host Trae actually talks to. If you are logged out or the token has expired, open Trae and trigger a completion or chat so it logs a fresh request, then re-run.
-
-### Option B: Manual
-
-**Log path** (newest session folder):
-- Windows: `%APPDATA%\Trae\logs\<session>\window1\exthost\trae.ai-code-completion\completion.log`
-- macOS: `~/Library/Application Support/Trae/logs/<session>/.../completion.log`
-- Linux: `~/.config/Trae/logs/<session>/.../completion.log`
-
-Find the newest line containing `request: headers: {...}` and map the header values:
-
-- `x-ide-token` → `TRAE_IDE_TOKEN`
-- `x-machine-id` → `TRAE_MACHINE_ID`
-- `x-device-id` → `TRAE_DEVICE_ID`
-- `x-app-id` → `TRAE_APP_ID`
-
-> The IDE token rotates. If Trae logs you out or rotates it, re-run `auth.py` and update `.env`.
-
-> The host in those logs (e.g. `https://coresg-normal.trae.ai`) is the real upstream. The default `TRAE_BASE_URL` may differ — if model/chat calls fail, set `TRAE_BASE_URL` to the host `auth.py` reports.
-
----
-
-## Usage
-
-Point any OpenAI-compatible client at http://127.0.0.1:8787/v1.
-
-- Cherry Studio: Settings -> AI Provider -> OpenAI -> Base URL: http://127.0.0.1:8787/v1
-- Cline / Continue: set apiBaseUrl to http://127.0.0.1:8787/v1
-
-Pick a working model id from `/v1/models` (e.g. `deepseek-V3`, `gpt-4o`, `gemini_2.5_flash`).
-
----
-
-## Test with curl
-
-With the server running (`python main.py`):
-
+**1. Clone and install**
 ```bash
-# health check
-curl http://127.0.0.1:8787/health
-
-# list available models
-curl http://127.0.0.1:8787/v1/models
-
-# chat — non-streaming
-curl http://127.0.0.1:8787/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-V3","messages":[{"role":"user","content":"Hello in 5 words"}]}'
-
-# chat — streaming (token-by-token, ends with [DONE])
-curl -N http://127.0.0.1:8787/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-V3","messages":[{"role":"user","content":"Count to 5"}],"stream":true}'
+git clone https://github.com/arifintahu/traepilot.git
+cd traepilot
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-If `API_KEY` is set in `.env`, add `-H "Authorization: Bearer <your-key>"`. On Windows PowerShell, use `curl.exe` (the `curl` alias there is `Invoke-WebRequest`, which has different syntax).
+**2. Pull credentials from Trae**
+```bash
+python auth.py --write
+```
+
+> 💡 `auth.py` reads your credentials directly from Trae's own completion logs — no manual token hunting. If it reports a different `TRAE_BASE_URL` than the default, update your `.env`.
+
+**3. Start the proxy**
+```bash
+python main.py
+```
+
+That's it. Proxy is live at `http://127.0.0.1:8787/v1`.
 
 ---
 
-## Usage Tracking
+## 🔌 Connect Your Client
 
-Every `/v1/chat/completions` request is recorded to `usage.db` (SQLite, created automatically). Token counts are estimated via the ÷4 character heuristic and marked `"estimated": true`.
+Point any OpenAI-compatible client at:
+
+```
+Base URL:  http://127.0.0.1:8787/v1
+API Key:   (leave empty, or set API_KEY in .env for local auth)
+```
+
+| Client | Where to set it |
+|---|---|
+| **Cherry Studio** | Settings → AI Provider → OpenAI → Base URL |
+| **Cline** | Settings → API Provider → OpenAI Compatible → Base URL |
+| **Continue** | `config.json` → `apiBase` |
+| **Cursor** | Settings → OpenAI API → Base URL (override) |
+| **Any OpenAI SDK** | `base_url="http://127.0.0.1:8787/v1"` |
+
+---
+
+## 🤖 Available Models
+
+Fetch the live list anytime:
+```bash
+curl http://127.0.0.1:8787/v1/models
+```
+
+Working models (verified against the API):
+
+| Model ID | Notes |
+|---|---|
+| `deepseek-V3` | ✅ Recommended default |
+| `deepseek-V3-0324` | ✅ |
+| `deepseek-R1` | ✅ Reasoning model |
+| `gpt-4o` | ✅ |
+| `gpt-4.1-2025-04-14` | ✅ |
+| `gemini-2.5-pro-preview-03-25` | ✅ |
+| `gemini_2.5_flash` | ✅ |
+| `claude3.5` | ⚠️ May return 4023 (account/region) |
+| `aws_sdk_claude37_sonnet` | ⚠️ May return 4023 (account/region) |
+
+> ℹ️ **Newer models** (GPT-5.x, Gemini-3, MiniMax, Kimi…) shown in Trae IDE cannot be proxied — their requests are encrypted at the application layer via ByteDance's "aha" transport. `/v1/models` lists only what's actually reachable.
+
+---
+
+## 🔑 Getting Credentials
+
+Trae 2.x encrypts the account token, so `auth.py` reads it from Trae's own request logs instead of the database.
+
+### Auto-extract (recommended)
 
 ```bash
-# Summary for the last 7 days
+python auth.py            # preview what will be written
+python auth.py --write    # write directly into .env
+```
+
+`--write` updates `.env` in-place — replaces values, drops duplicates, never appends. Safe to re-run after token rotation.
+
+**If the token expires:** Open Trae, trigger any completion or chat (so it logs a fresh request), then re-run `python auth.py --write`.
+
+### Manual extract
+
+Find the newest session log:
+- **Windows:** `%APPDATA%\Trae\logs\<session>\window1\exthost\trae.ai-code-completion\completion.log`
+- **macOS:** `~/Library/Application Support/Trae/logs/<session>/.../completion.log`
+- **Linux:** `~/.config/Trae/logs/<session>/.../completion.log`
+
+Search for `request: headers: {...}` and map:
+
+```
+x-ide-token   → TRAE_IDE_TOKEN
+x-machine-id  → TRAE_MACHINE_ID
+x-device-id   → TRAE_DEVICE_ID
+x-app-id      → TRAE_APP_ID
+```
+
+---
+
+## 📊 Usage Tracking
+
+Every chat request is recorded to `usage.db` (SQLite, auto-created). Token counts are estimated (÷4 char heuristic) and marked `estimated: true`.
+
+```bash
+# Stats for the last 7 days
 curl "http://127.0.0.1:8787/usage/stats?period=7d"
 
 # Last 20 requests with prompt preview
 curl "http://127.0.0.1:8787/usage/history?limit=20"
 
-# Daily breakdown for the past week
+# Daily breakdown
 curl "http://127.0.0.1:8787/usage/daily?days=7"
 ```
 
-Valid `period` values: `24h` (default) | `7d` | `30d` | `all`.
-`limit` max: 500. `days` max: 365.
+| Endpoint | Params | Default |
+|---|---|---|
+| `/usage/stats` | `period`: `24h` \| `7d` \| `30d` \| `all` | `24h` |
+| `/usage/history` | `limit` (max 500), `offset` | `50`, `0` |
+| `/usage/daily` | `days` (max 365) | `30` |
 
-If `API_KEY` is set, the usage endpoints also require `Authorization: Bearer <key>`.
-
-To store the DB at a different path, set `USAGE_DB=/path/to/usage.db` in `.env`.
-
----
-
-## Tests
-
-    pytest
+> 💡 To store the DB elsewhere: `USAGE_DB=/path/to/usage.db` in `.env`.
 
 ---
 
-## Project Structure
+## ⚙️ Configuration
 
-    traepilot/
-        main.py           # FastAPI app: /v1/chat/completions, /v1/models, /health
-        trae_client.py    # Trae upstream client (chat + models)
-        config.py         # Env var config
-        auth.py           # Credential extractor (reads Trae's completion log)
-        requirements.txt
-        .env.example
-        tests/
-            test_trae_client.py
-
----
-
-## Known limitations
-
-- **Some models may be unavailable to your account.** Chat uses Trae's `/api/ide/v1/chat` endpoint; a model your subscription/region doesn't grant returns an error. On the test account the Claude models (`claude3.5`, `aws_sdk_claude37_sonnet`) return code `4023`, while Gemini, GPT-4.x / GPT-4o, and DeepSeek all work.
-- **Newer models (GPT-5.x, Gemini-3, MiniMax, …) cannot be proxied.** They run through `POST /api/ide/.../api/agent/v3/create_agent_task`, not the legacy `/api/ide/v1/chat`. Verified by MITM capture (mitmproxy local mode): the API host does **not** cert-pin, but the agent **encrypts the request body at the application layer** via ByteDance's "aha" bridge transport (`x-bridge-transport: aha`, `x-request-pin`/`x-requested-at` envelope; decoded body entropy ≈ 8.0 with a decoy `content-type: application/json`). The response is plaintext SSE, but a valid request can't be forged without reversing the aha encryption (key derivation lives in the native agent binary). That's why no public proxy implements them and why `/v1/models` lists only the legacy catalog.
-- **The chat protocol is internal.** It's a prompt-pipeline request reverse-engineered from Trae's client, not a public API — a Trae update can change it.
-
-## Breakage Notice
-
-When Trae updates, check `build_trae_payload()` and the SSE parsing in trae_client.py (chat protocol), then the headers and credential extraction in auth.py.
+| Variable | Default | Description |
+|---|---|---|
+| `TRAE_BASE_URL` | `https://coresg-normal.trae.ai` | Upstream API — `auth.py` reports the correct value for your region |
+| `TRAE_IDE_TOKEN` | required | Trae auth token (JWT) |
+| `TRAE_MACHINE_ID` | required | Machine ID |
+| `TRAE_DEVICE_ID` | required | Device ID |
+| `TRAE_APP_ID` | required | App ID |
+| `BIND_HOST` | `127.0.0.1` | Bind address — do not change |
+| `BIND_PORT` | `8787` | Port |
+| `API_KEY` | _(empty)_ | Optional: require Bearer auth on all endpoints |
+| `TRAE_EXCLUDE_MODELS` | `claude3.5,aws_sdk_claude37_sonnet` | Comma-separated model IDs to hide from `/v1/models` |
+| `USAGE_DB` | `usage.db` | Path to usage tracking database |
 
 ---
 
-## License
+## 🧪 Test with curl
 
-MIT
+```bash
+# Health check
+curl http://127.0.0.1:8787/health
+
+# List models
+curl http://127.0.0.1:8787/v1/models
+
+# Chat (non-streaming)
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-V3","messages":[{"role":"user","content":"Hello in 5 words"}]}'
+
+# Chat (streaming)
+curl -N http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-V3","messages":[{"role":"user","content":"Count to 5"}],"stream":true}'
+```
+
+---
+
+## ⚠️ Known Limitations
+
+- **Newer models can't be proxied.** GPT-5.x, Gemini-3, MiniMax, Kimi — these run through `POST /api/agent/v3/create_agent_task` with an application-layer encrypted body (ByteDance's "aha" transport, entropy ≈ 8.0). The request can't be replayed without reversing the encryption.
+- **Claude models may fail.** `claude3.5` and `aws_sdk_claude37_sonnet` return error `4023` if your account or region doesn't have access.
+- **The chat protocol is internal.** Built from reverse-engineering Trae's prompt-pipeline — a Trae update can break it. If chat stops working, check `trae_client.py` first.
+
+---
+
+## 🔁 Breakage Notice
+
+When Trae updates:
+1. Check `build_trae_payload()` and SSE parsing in `trae_client.py`
+2. Check headers and log paths in `auth.py`
+3. Re-run `python auth.py --write` to refresh the token
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE)
