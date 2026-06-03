@@ -1,9 +1,10 @@
+import os
 import time
 import json
 from contextlib import asynccontextmanager
 from typing import Optional, Literal
 from fastapi import FastAPI, HTTPException, Depends, APIRouter, Query
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -133,6 +134,42 @@ app.include_router(usage_router)
 @app.get("/health")
 async def health():
     return {"status": "ok", "timestamp": int(time.time())}
+
+
+_MASKED = "••••••"
+_SENSITIVE = {"API_KEY", "TRAE_IDE_TOKEN", "TRAE_MACHINE_ID", "TRAE_DEVICE_ID"}
+
+
+def _mask(key: str) -> str:
+    val = os.getenv(key, "")
+    if not val:
+        return "(not set)"
+    return _MASKED
+
+
+@app.get("/config")
+async def get_config(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+):
+    verify_api_key(credentials)
+    return {
+        "TRAE_BASE_URL":         os.getenv("TRAE_BASE_URL", "https://coresg-normal.trae.ai"),
+        "BIND_HOST":             os.getenv("BIND_HOST", "127.0.0.1"),
+        "BIND_PORT":             os.getenv("BIND_PORT", "8080"),
+        "API_KEY":               _mask("API_KEY"),
+        "TRAE_EXCLUDE_MODELS":   os.getenv("TRAE_EXCLUDE_MODELS", "claude3.5,aws_sdk_claude37_sonnet"),
+        "TRAE_APP_ID":           os.getenv("TRAE_APP_ID", ""),
+        "TRAE_DEVICE_BRAND":     os.getenv("TRAE_DEVICE_BRAND", ""),
+        "TRAE_DEVICE_CPU":       os.getenv("TRAE_DEVICE_CPU", ""),
+        "TRAE_DEVICE_ID":        _mask("TRAE_DEVICE_ID"),
+        "TRAE_DEVICE_TYPE":      os.getenv("TRAE_DEVICE_TYPE", ""),
+        "TRAE_IDE_TOKEN":        _mask("TRAE_IDE_TOKEN"),
+        "TRAE_IDE_VERSION":      os.getenv("TRAE_IDE_VERSION", ""),
+        "TRAE_IDE_VERSION_CODE": os.getenv("TRAE_IDE_VERSION_CODE", ""),
+        "TRAE_MACHINE_ID":       _mask("TRAE_MACHINE_ID"),
+        "TRAE_OS_VERSION":       os.getenv("TRAE_OS_VERSION", ""),
+        "TRAE_PLUGIN_CHANNEL":   os.getenv("TRAE_PLUGIN_CHANNEL", "icube-ai"),
+    }
 
 
 if __name__ == "__main__":
