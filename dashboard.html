@@ -165,20 +165,20 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 
   <div class="nav-sec">Monitor</div>
-  <div class="nav-item active" data-section="usage" onclick="showSection('usage')" role="button" tabindex="0">
+  <div class="nav-item active" data-section="usage" onclick="showSection('usage')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('usage')}" role="button" tabindex="0">
     <span class="nav-icon" aria-hidden="true">📊</span> Usage
   </div>
 
   <div class="nav-sec">API</div>
-  <div class="nav-item" data-section="models" onclick="showSection('models')" role="button" tabindex="0">
+  <div class="nav-item" data-section="models" onclick="showSection('models')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('models')}" role="button" tabindex="0">
     <span class="nav-icon" aria-hidden="true">🧩</span> Models
   </div>
-  <div class="nav-item" data-section="testchat" onclick="showSection('testchat')" role="button" tabindex="0">
+  <div class="nav-item" data-section="testchat" onclick="showSection('testchat')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('testchat')}" role="button" tabindex="0">
     <span class="nav-icon" aria-hidden="true">💬</span> Test Chat
   </div>
 
   <div class="nav-sec">System</div>
-  <div class="nav-item" data-section="config" onclick="showSection('config')" role="button" tabindex="0">
+  <div class="nav-item" data-section="config" onclick="showSection('config')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('config')}" role="button" tabindex="0">
     <span class="nav-icon" aria-hidden="true">⚙️</span> Config
   </div>
 
@@ -197,10 +197,10 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
       <div id="page-subtitle" class="page-subtitle">Token &amp; request tracking · estimated via ÷4 heuristic</div>
     </div>
     <div id="period-tabs" class="period-tabs" role="tablist" aria-label="Time period" style="display:none">
-      <div class="ptab active" data-period="24h" onclick="setPeriod('24h')" role="tab" aria-selected="true">24h</div>
-      <div class="ptab" data-period="7d"  onclick="setPeriod('7d')"  role="tab" aria-selected="false">7d</div>
-      <div class="ptab" data-period="30d" onclick="setPeriod('30d')" role="tab" aria-selected="false">30d</div>
-      <div class="ptab" data-period="all" onclick="setPeriod('all')" role="tab" aria-selected="false">All</div>
+      <div class="ptab active" data-period="24h" onclick="setPeriod('24h')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('24h')}" role="tab" aria-selected="true" tabindex="0">24h</div>
+      <div class="ptab" data-period="7d"  onclick="setPeriod('7d')"  onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('7d')}"  role="tab" aria-selected="false" tabindex="0">7d</div>
+      <div class="ptab" data-period="30d" onclick="setPeriod('30d')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('30d')}" role="tab" aria-selected="false" tabindex="0">30d</div>
+      <div class="ptab" data-period="all" onclick="setPeriod('all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('all')}" role="tab" aria-selected="false" tabindex="0">All</div>
     </div>
     <div id="topbar-action"></div>
   </div>
@@ -417,17 +417,21 @@ function fmt(n) {
 
 async function loadUsage() {
   showErr('usage', false);
-  const [sResp, dResp] = await Promise.all([
-    api('/usage/stats?period=' + _period),
-    api('/usage/daily?days=7'),
-  ]);
-  if (!sResp.ok || !dResp.ok) { showErr('usage', true); return; }
-  const stats = await sResp.json();
-  const daily = await dResp.json();
-  renderStats(stats);
-  renderChart(daily.items);
-  renderModelTable(stats.by_model);
-  document.getElementById('by-model-period').textContent = 'last ' + _period;
+  try {
+    const [sResp, dResp] = await Promise.all([
+      api('/usage/stats?period=' + _period),
+      api('/usage/daily?days=7'),
+    ]);
+    if (!sResp.ok || !dResp.ok) { showErr('usage', true); return; }
+    const stats = await sResp.json();
+    const daily = await dResp.json();
+    renderStats(stats);
+    renderChart(daily.items);
+    renderModelTable(stats.by_model);
+    document.getElementById('by-model-period').textContent = 'last ' + _period;
+  } catch {
+    showErr('usage', true);
+  }
 }
 
 function renderStats(s) {
@@ -511,50 +515,64 @@ async function loadModels() {
   showErr('models', false);
   document.getElementById('model-grid').innerHTML =
     '<div style="color:var(--txt-m);padding:20px">Loading…</div>';
-  const resp = await api('/v1/models');
-  if (!resp.ok) { showErr('models', true); return; }
-  const data = await resp.json();
-  const models = data.data || [];
-  if (!models.length) {
-    document.getElementById('model-grid').innerHTML =
-      '<div style="color:var(--txt-m);padding:20px">No models returned.</div>';
-    return;
+  try {
+    const resp = await api('/v1/models');
+    if (!resp.ok) { showErr('models', true); return; }
+    const data = await resp.json();
+    const models = data.data || [];
+    if (!models.length) {
+      document.getElementById('model-grid').innerHTML =
+        '<div style="color:var(--txt-m);padding:20px">No models returned.</div>';
+      return;
+    }
+    document.getElementById('model-grid').innerHTML = models.map(m => `
+      <div class="model-card">
+        <div class="model-id">${esc(m.id)}</div>
+        <div class="model-owner">${esc(m.owned_by || 'trae')}</div>
+        <button class="copy-btn" data-model-id="${esc(m.id)}" onclick="copyModel(this)">Copy ID</button>
+      </div>`).join('');
+  } catch {
+    showErr('models', true);
   }
-  document.getElementById('model-grid').innerHTML = models.map(m => `
-    <div class="model-card">
-      <div class="model-id">${esc(m.id)}</div>
-      <div class="model-owner">${esc(m.owned_by || 'trae')}</div>
-      <button class="copy-btn" onclick="copyModel(this,'${esc(m.id)}')">Copy ID</button>
-    </div>`).join('');
 }
 
-function copyModel(btn, id) {
+function copyModel(btn) {
+  const id = btn.dataset.modelId;
   navigator.clipboard.writeText(id).then(() => {
     btn.textContent = '✓ Copied';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'Copy ID'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    btn.textContent = 'Failed';
+    setTimeout(() => { btn.textContent = 'Copy ID'; }, 2000);
   });
 }
 
 // ── Test Chat ─────────────────────────────────────────────────────────────────
 async function loadTestModel() {
-  const resp = await api('/v1/models');
   const el = document.getElementById('test-model-display');
-  if (!resp.ok) {
+  try {
+    const resp = await api('/v1/models');
+    if (!resp.ok) {
+      el.textContent = 'Could not load models';
+      document.getElementById('run-btn').disabled = true;
+      document.getElementById('run-btn').title = 'Could not load models';
+      return;
+    }
+    const models = (await resp.json()).data || [];
+    if (!models.length) {
+      el.textContent = 'No models available';
+      document.getElementById('run-btn').disabled = true;
+      return;
+    }
+    _testModel = models[0].id;
+    el.textContent = _testModel;
+    el.className = 'model-chip';
+  } catch {
     el.textContent = 'Could not load models';
     document.getElementById('run-btn').disabled = true;
     document.getElementById('run-btn').title = 'Could not load models';
-    return;
   }
-  const models = (await resp.json()).data || [];
-  if (!models.length) {
-    el.textContent = 'No models available';
-    document.getElementById('run-btn').disabled = true;
-    return;
-  }
-  _testModel = models[0].id;
-  el.textContent = _testModel;
-  el.className = 'model-chip';
 }
 
 async function runTest() {
@@ -611,24 +629,28 @@ const SENSITIVE_KEYS = new Set(['API_KEY','TRAE_IDE_TOKEN','TRAE_MACHINE_ID','TR
 
 async function loadConfig() {
   showErr('config', false);
-  const resp = await api('/config');
-  if (!resp.ok) { showErr('config', true); return; }
-  const data = await resp.json();
-  const tbody = document.getElementById('config-table-body');
-  tbody.innerHTML = Object.entries(data).map(([k, v]) => {
-    if (SENSITIVE_KEYS.has(k)) {
-      const displayVal = (v === '(not set)') ? '(not set)' : '••••••';
-      return `<tr>
-        <td>${esc(k)}</td>
-        <td><div class="masked-wrap">
-          <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${displayVal}</span>
-          ${v === '(not set)' ? '' :
-            `<button class="reveal-btn" onclick="revealCfg(this,'${esc(k)}')" aria-label="Reveal value for ${esc(k)}">👁 Reveal</button>`}
-        </div></td>
-      </tr>`;
-    }
-    return `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`;
-  }).join('');
+  try {
+    const resp = await api('/config');
+    if (!resp.ok) { showErr('config', true); return; }
+    const data = await resp.json();
+    const tbody = document.getElementById('config-table-body');
+    tbody.innerHTML = Object.entries(data).map(([k, v]) => {
+      if (SENSITIVE_KEYS.has(k)) {
+        const displayVal = (v === '(not set)') ? '(not set)' : '••••••';
+        return `<tr>
+          <td>${esc(k)}</td>
+          <td><div class="masked-wrap">
+            <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${displayVal}</span>
+            ${v === '(not set)' ? '' :
+              `<button class="reveal-btn" onclick="revealCfg(this,'${esc(k)}')" aria-label="Reveal value for ${esc(k)}">👁 Reveal</button>`}
+          </div></td>
+        </tr>`;
+      }
+      return `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`;
+    }).join('');
+  } catch {
+    showErr('config', true);
+  }
 }
 
 function revealCfg(btn, key) {
