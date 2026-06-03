@@ -6,3 +6,6 @@ __pycache__/
 dist/
 *.egg-info/
 .venv*/
+usage.db
+usage.db-wal
+usage.db-shm

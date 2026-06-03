@@ -123,6 +123,30 @@ If `API_KEY` is set in `.env`, add `-H "Authorization: Bearer <your-key>"`. On W
 
 ---
 
+## Usage Tracking
+
+Every `/v1/chat/completions` request is recorded to `usage.db` (SQLite, created automatically). Token counts are estimated via the ÷4 character heuristic and marked `"estimated": true`.
+
+```bash
+# Summary for the last 7 days
+curl "http://127.0.0.1:8787/usage/stats?period=7d"
+
+# Last 20 requests with prompt preview
+curl "http://127.0.0.1:8787/usage/history?limit=20"
+
+# Daily breakdown for the past week
+curl "http://127.0.0.1:8787/usage/daily?days=7"
+```
+
+Valid `period` values: `24h` (default) | `7d` | `30d` | `all`.
+`limit` max: 500. `days` max: 365.
+
+If `API_KEY` is set, the usage endpoints also require `Authorization: Bearer <key>`.
+
+To store the DB at a different path, set `USAGE_DB=/path/to/usage.db` in `.env`.
+
+---
+
 ## Tests
 
     pytest
