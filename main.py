@@ -174,8 +174,11 @@ async def get_config(
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
-    with open(html_path, encoding="utf-8") as f:
-        return f.read()
+    try:
+        with open(html_path, encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="dashboard.html not found")
 
 
 if __name__ == "__main__":
