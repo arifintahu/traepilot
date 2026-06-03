@@ -137,7 +137,6 @@ async def health():
 
 
 _MASKED = "••••••"
-_SENSITIVE = {"API_KEY", "TRAE_IDE_TOKEN", "TRAE_MACHINE_ID", "TRAE_DEVICE_ID"}
 
 
 def _mask(key: str) -> str:
@@ -155,7 +154,7 @@ async def get_config(
     return {
         "TRAE_BASE_URL":         os.getenv("TRAE_BASE_URL", "https://coresg-normal.trae.ai"),
         "BIND_HOST":             os.getenv("BIND_HOST", "127.0.0.1"),
-        "BIND_PORT":             os.getenv("BIND_PORT", "8080"),
+        "BIND_PORT":             BIND_PORT,  # already int from config.py
         "API_KEY":               _mask("API_KEY"),
         "TRAE_EXCLUDE_MODELS":   os.getenv("TRAE_EXCLUDE_MODELS", "claude3.5,aws_sdk_claude37_sonnet"),
         "TRAE_APP_ID":           os.getenv("TRAE_APP_ID", ""),
