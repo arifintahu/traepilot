@@ -70,6 +70,9 @@ async def chat_completions(req: ChatCompletionRequest):
                             accumulated.append(delta)
                     except Exception:
                         pass
+                else:
+                    # loop exhausted without [DONE] — upstream closed connection early
+                    status = "error"
             except Exception as e:
                 status = "error"
                 err = {"error": {"message": str(e), "type": "upstream_error"}}
