@@ -9,7 +9,7 @@ import pytest
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 def make_messages(text: str = "hello") -> list:
     return [{"role": "user", "content": text}]

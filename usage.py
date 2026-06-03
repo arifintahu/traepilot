@@ -72,6 +72,10 @@ def _prompt_preview(messages: list) -> str:
             content = m.get("content", "")
             if isinstance(content, str):
                 return content[:150]
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        return part.get("text", "")[:150]
     return ""
 
 
