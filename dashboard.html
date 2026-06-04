@@ -112,6 +112,10 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 .test-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px}
 .test-desc{color:var(--txt-m);margin-bottom:16px;font-size:13px}
 .test-model-label{font-size:11px;color:var(--txt-m);margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:.7px}
+.model-select{display:block;width:100%;max-width:340px;padding:8px 32px 8px 12px;margin-bottom:16px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--txt-1);font-size:13px;font-family:inherit;outline:none;cursor:pointer;transition:border-color .15s;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%238b949e' d='M5 7L0 2h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.model-select:focus{border-color:rgba(129,140,248,.5)}
+.model-select:disabled{opacity:.5;cursor:not-allowed}
+.model-select option{background:#0d1117}
 .run-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 24px;border-radius:8px;border:1px solid rgba(129,140,248,.35);background:rgba(129,140,248,.12);color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
 .run-btn:hover:not(:disabled){background:rgba(129,140,248,.2);border-color:rgba(129,140,248,.5)}
 .run-btn:disabled{opacity:.5;cursor:not-allowed}
@@ -259,9 +263,11 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
     <!-- Test Chat section -->
     <section id="section-testchat" class="section" aria-label="Test chat">
       <div class="test-card">
-        <div class="test-model-label">Test Model</div>
-        <div id="test-model-display" class="stat-tag tag-gray" style="margin-bottom:16px">loading…</div>
-        <p class="test-desc">Sends <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:3px;color:var(--txt-1)">"Hello! Are you working?"</code> to the first available model and shows the response.</p>
+        <div class="test-model-label">Select Model</div>
+        <select id="model-select" class="model-select" disabled aria-label="Select model to test">
+          <option value="">Loading models…</option>
+        </select>
+        <p class="test-desc">Sends <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:3px;color:var(--txt-1)">"Hello! Are you working?"</code> to the selected model and shows the response.</p>
         <button id="run-btn" class="run-btn" onclick="runTest()">▶ Run Test</button>
         <div id="result-box" class="result-box" role="status" aria-live="polite">
           <div class="result-meta" id="result-meta"></div>
@@ -309,7 +315,6 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 // ── State ─────────────────────────────────────────────────────────────────────
 let _apiKey = sessionStorage.getItem('tp_key') || '';
 let _period = '24h';
-let _testModel = null;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function api(url, opts = {}) {
@@ -550,33 +555,36 @@ function copyModel(btn) {
 
 // ── Test Chat ─────────────────────────────────────────────────────────────────
 async function loadTestModel() {
-  const el = document.getElementById('test-model-display');
+  const sel = document.getElementById('model-select');
+  const btn = document.getElementById('run-btn');
   try {
     const resp = await api('/v1/models');
     if (!resp.ok) {
-      el.textContent = 'Could not load models';
-      document.getElementById('run-btn').disabled = true;
-      document.getElementById('run-btn').title = 'Could not load models';
+      sel.innerHTML = '<option value="">Could not load models</option>';
+      btn.disabled = true;
+      btn.title = 'Could not load models';
       return;
     }
     const models = (await resp.json()).data || [];
     if (!models.length) {
-      el.textContent = 'No models available';
-      document.getElementById('run-btn').disabled = true;
+      sel.innerHTML = '<option value="">No models available</option>';
+      btn.disabled = true;
       return;
     }
-    _testModel = models[0].id;
-    el.textContent = _testModel;
-    el.className = 'model-chip';
+    sel.innerHTML = models.map(m => `<option value="${esc(m.id)}">${esc(m.id)}</option>`).join('');
+    sel.disabled = false;
+    btn.disabled = false;
+    btn.title = '';
   } catch {
-    el.textContent = 'Could not load models';
-    document.getElementById('run-btn').disabled = true;
-    document.getElementById('run-btn').title = 'Could not load models';
+    sel.innerHTML = '<option value="">Could not load models</option>';
+    btn.disabled = true;
+    btn.title = 'Could not load models';
   }
 }
 
 async function runTest() {
-  if (!_testModel) return;
+  const model = document.getElementById('model-select').value;
+  if (!model) return;
   const btn = document.getElementById('run-btn');
   const resultBox = document.getElementById('result-box');
   btn.disabled = true;
@@ -588,7 +596,7 @@ async function runTest() {
     const resp = await api('/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({
-        model: _testModel,
+        model,
         messages: [{ role: 'user', content: 'Hello! Are you working?' }],
         stream: false,
       }),
@@ -600,7 +608,7 @@ async function runTest() {
     }
     const data = await resp.json();
     const text = data.choices?.[0]?.message?.content ?? '(empty response)';
-    showResult({ text, model: _testModel, elapsed, ok: true });
+    showResult({ text, model, elapsed, ok: true });
     btn.textContent = '✓ Test passed';
     btn.className = 'run-btn success';
   } catch (e) {
