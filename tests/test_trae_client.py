@@ -5,9 +5,11 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 # ── build_trae_payload ────────────────────────────────────────────────────────
 # Current signature: build_trae_payload(messages: list, model: str) -> dict
-# The old tests called it with (messages, model, stream, max_tokens) — those
+#
+# The old tests called it with (messages, model, stream, max_tokens). Those
 # args were removed when the upstream protocol switched from OpenAI SSE to
-# Trae's named-event prompt-pipeline format.
+# Trae's named-event prompt-pipeline format. stream/max_tokens are no longer
+# part of the payload; the model is stored as model_name (Trae's key).
 
 def test_build_trae_payload_sets_model_name():
     from trae_client import build_trae_payload
@@ -41,8 +43,8 @@ def test_build_trae_payload_intent_name():
 
 
 # ── _delta ────────────────────────────────────────────────────────────────────
-# _delta replaced the old trae_events() SSE line parser.  It merges reasoning
-# and response chunks, wrapping reasoning content in <think></think>.
+# trae_events() no longer exists. _delta() is the current equivalent: it merges
+# reasoning and response chunks, wrapping reasoning in <think></think> tags.
 
 def test_delta_plain_response_no_reasoning():
     from trae_client import _delta
