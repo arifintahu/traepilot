@@ -128,6 +128,17 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 .result-text{font-size:13px;color:var(--txt-2);white-space:pre-wrap;word-break:break-word}
 .result-text.err{color:var(--red)}
 
+/* ── History table ── */
+.status-ok{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;color:var(--green);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.2)}
+.status-err{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;color:var(--red);background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2)}
+.prompt-preview{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt-m);font-size:12px}
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;border-top:1px solid var(--border)}
+.page-info{font-size:12px;color:var(--txt-m)}
+.page-btns{display:flex;gap:6px}
+.page-btn{font-size:11px;font-weight:500;padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--txt-m);cursor:pointer;transition:all .15s}
+.page-btn:hover:not(:disabled){color:var(--txt-2);background:rgba(255,255,255,.08)}
+.page-btn:disabled{opacity:.35;cursor:not-allowed}
+
 /* ── Config table ── */
 .config-table tbody td:first-child{color:var(--txt-m);font-family:monospace;font-size:12px;width:260px}
 .config-table tbody td:last-child{color:var(--txt-1)}
@@ -248,6 +259,30 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
           </tr></thead>
           <tbody id="model-table-body"><tr><td colspan="5" style="text-align:center;color:var(--txt-m);padding:20px">Loading…</td></tr></tbody>
         </table>
+      <div class="table-card" style="margin-top:18px">
+        <div class="table-top">
+          <div class="table-title">Request History</div>
+          <div id="history-meta" class="table-meta">recent requests</div>
+        </div>
+        <table aria-label="Request history">
+          <thead><tr>
+            <th scope="col">Time</th>
+            <th scope="col">Model</th>
+            <th scope="col">Prompt Preview</th>
+            <th scope="col">Prompt</th>
+            <th scope="col">Completion</th>
+            <th scope="col">Status</th>
+          </tr></thead>
+          <tbody id="history-table-body"><tr><td colspan="6" style="text-align:center;color:var(--txt-m);padding:20px">Loading…</td></tr></tbody>
+        </table>
+        <div class="pagination">
+          <div class="page-info" id="history-page-info">—</div>
+          <div class="page-btns">
+            <button class="page-btn" id="history-prev" onclick="historyPage(-1)" disabled>← Prev</button>
+            <button class="page-btn" id="history-next" onclick="historyPage(1)"  disabled>Next →</button>
+          </div>
+        </div>
+      </div>
       </div>
     </section>
 
@@ -315,6 +350,8 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 // ── State ─────────────────────────────────────────────────────────────────────
 let _apiKey = sessionStorage.getItem('tp_key') || '';
 let _period = '24h';
+let _historyOffset = 0;
+const HISTORY_LIMIT = 20;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function api(url, opts = {}) {
@@ -434,6 +471,8 @@ async function loadUsage() {
     renderChart(daily.items);
     renderModelTable(stats.by_model);
     document.getElementById('by-model-period').textContent = 'last ' + _period;
+    _historyOffset = 0;
+    loadHistory();
   } catch {
     showErr('usage', true);
   }
@@ -513,6 +552,68 @@ function renderModelTable(byModel) {
       <td><div class="share-wrap"><div class="share-track"><div class="share-fill" style="width:${pct}%"></div></div><span class="share-pct">${pct}%</span></div></td>
     </tr>`;
   }).join('');
+}
+
+// ── Request History ───────────────────────────────────────────────────────────
+async function loadHistory() {
+  const tbody = document.getElementById('history-table-body');
+  const prevBtn = document.getElementById('history-prev');
+  const nextBtn = document.getElementById('history-next');
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--txt-m);padding:16px">Loading…</td></tr>`;
+  try {
+    const resp = await api(`/usage/history?limit=${HISTORY_LIMIT}&offset=${_historyOffset}`);
+    if (!resp.ok) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:16px">Failed to load history</td></tr>`;
+      return;
+    }
+    const data = await resp.json();
+    renderHistory(data);
+  } catch {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:16px">Failed to load history</td></tr>`;
+  }
+}
+
+function renderHistory(data) {
+  const tbody = document.getElementById('history-table-body');
+  const prevBtn = document.getElementById('history-prev');
+  const nextBtn = document.getElementById('history-next');
+  const pageInfo = document.getElementById('history-page-info');
+
+  const { items = [], total = 0, offset = 0, limit = HISTORY_LIMIT } = data;
+  const page = Math.floor(offset / limit) + 1;
+  const pages = Math.max(1, Math.ceil(total / limit));
+
+  pageInfo.textContent = total
+    ? `${offset + 1}–${Math.min(offset + items.length, total)} of ${total}`
+    : '0 requests';
+  prevBtn.disabled = offset === 0;
+  nextBtn.disabled = offset + items.length >= total;
+
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--txt-m);padding:20px">No requests recorded yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(r => {
+    const ts = r.timestamp ? r.timestamp.replace('T', ' ').replace('Z', '') : '—';
+    const preview = r.prompt_preview || '(no preview)';
+    const statusHtml = r.status === 'ok'
+      ? `<span class="status-ok">ok</span>`
+      : `<span class="status-err">${esc(r.status)}</span>`;
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--txt-m);font-size:11px">${esc(ts)}</td>
+      <td><span class="model-chip">${esc(r.model)}</span></td>
+      <td><div class="prompt-preview" title="${esc(preview)}">${esc(preview)}</div></td>
+      <td>${(r.prompt_tokens || 0).toLocaleString()}</td>
+      <td>${(r.completion_tokens || 0).toLocaleString()}</td>
+      <td>${statusHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function historyPage(dir) {
+  _historyOffset = Math.max(0, _historyOffset + dir * HISTORY_LIMIT);
+  loadHistory();
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
