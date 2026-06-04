@@ -16,7 +16,7 @@ Trae IDE has a great model subscription but locks you into its own chat UI. Trae
 |---|---|
 | ❌ Trae models only in Trae's UI | ✅ Use Trae models in any client |
 | ❌ Can't use Cline / Continue / Cherry Studio | ✅ Drop-in OpenAI-compatible API |
-| ❌ No usage visibility | ✅ Local SQLite usage tracking |
+| ❌ No usage visibility | ✅ Local SQLite usage tracking + web dashboard |
 
 ---
 
@@ -76,6 +76,27 @@ API Key:   (leave empty, or set API_KEY in .env for local auth)
 | **Continue** | `config.json` → `apiBase` |
 | **Cursor** | Settings → OpenAI API → Base URL (override) |
 | **Any OpenAI SDK** | `base_url="http://127.0.0.1:8787/v1"` |
+
+---
+
+## 🖥️ Dashboard
+
+Open the built-in dashboard in any browser while the proxy is running:
+
+```
+http://127.0.0.1:8787/dashboard
+```
+
+Four sections via the sidebar:
+
+| Section | What it shows |
+|---|---|
+| **Usage** | Stat cards (requests, tokens), daily bar chart, per-model breakdown. Period tabs: 24h / 7d / 30d / All. |
+| **Models** | Live model list fetched from Trae — copy any model ID to clipboard. |
+| **Test Chat** | One-click API probe — sends `"Hello! Are you working?"` to the first available model and shows the response + latency. |
+| **Config** | All env vars in one place. Sensitive values (`API_KEY`, `TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, `TRAE_DEVICE_ID`) are masked server-side and never sent to the browser. |
+
+> 💡 If `API_KEY` is set in `.env`, the dashboard prompts for it on load and stores it in `sessionStorage` for the tab's lifetime.
 
 ---
 
@@ -141,6 +162,10 @@ x-app-id      → TRAE_APP_ID
 
 Every chat request is recorded to `usage.db` (SQLite, auto-created). Token counts are estimated (÷4 char heuristic) and marked `estimated: true`.
 
+> 💡 The **Usage** tab in the [dashboard](#️-dashboard) shows this data visually — stat cards, a 7-day bar chart, and a per-model breakdown.
+
+Or query the JSON API directly:
+
 ```bash
 # Stats for the last 7 days
 curl "http://127.0.0.1:8787/usage/stats?period=7d"
@@ -176,6 +201,23 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 | `API_KEY` | _(empty)_ | Optional: require Bearer auth on all endpoints |
 | `TRAE_EXCLUDE_MODELS` | `claude3.5,aws_sdk_claude37_sonnet` | Comma-separated model IDs to hide from `/v1/models` |
 | `USAGE_DB` | `usage.db` | Path to usage tracking database |
+
+---
+
+## 🗺️ API Reference
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/v1/models` | GET | optional | List available models |
+| `/v1/chat/completions` | POST | optional | Chat (streaming and non-streaming) |
+| `/usage/stats` | GET | optional | Aggregate token/request counts |
+| `/usage/history` | GET | optional | Paginated request log |
+| `/usage/daily` | GET | optional | Daily rollup |
+| `/config` | GET | optional | All env config (sensitive fields masked) |
+| `/dashboard` | GET | — | Web dashboard (HTML) |
+| `/health` | GET | — | `{"status":"ok"}` |
+
+"Optional" auth means the endpoint is open unless `API_KEY` is set in `.env`.
 
 ---
 
