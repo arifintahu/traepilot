@@ -87,16 +87,17 @@ Open the built-in dashboard in any browser while the proxy is running:
 http://127.0.0.1:8787/dashboard
 ```
 
-Four sections via the sidebar:
+Five sections via the sidebar:
 
 | Section | What it shows |
 |---|---|
-| **Usage** | Stat cards (requests, tokens), daily bar chart, per-model breakdown. Period tabs: 24h / 7d / 30d / All. |
-| **Models** | Live model list fetched from Trae — copy any model ID to clipboard. |
-| **Test Chat** | One-click API probe — sends `"Hello! Are you working?"` to the first available model and shows the response + latency. |
-| **Config** | All env vars in one place. Sensitive values (`API_KEY`, `TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, `TRAE_DEVICE_ID`) are masked server-side and never sent to the browser. |
+| **Usage** | Stat cards (requests, tokens) with sparklines, 7-day bar chart with hover tooltip, per-model breakdown table. Period tabs: 24h / 7d / 30d / All. |
+| **History** | Full request log — searchable by prompt/model, filterable by status (All / OK / Errors), model dropdown filter, paginated. |
+| **Models** | Live model list from Trae, grouped by provider (Gemini / OpenAI / DeepSeek / Claude) with color-coded avatar cards. Copy model ID to clipboard. |
+| **Test Chat** | Send `"Hello! Are you working?"` to any model you select. Shows the raw response, model, and latency. |
+| **Config** | All env vars grouped into Connection / Device / IDE. Sensitive values (`API_KEY`, `TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, `TRAE_DEVICE_ID`) are masked server-side — the real value is never sent to the browser. |
 
-> 💡 If `API_KEY` is set in `.env`, the dashboard prompts for it on load and stores it in `sessionStorage` for the tab's lifetime.
+> 💡 If `API_KEY` is set in `.env`, the dashboard shows a key prompt on load and stores it in `sessionStorage` for the tab's lifetime.
 
 ---
 
@@ -162,7 +163,7 @@ x-app-id      → TRAE_APP_ID
 
 Every chat request is recorded to `usage.db` (SQLite, auto-created). Token counts are estimated (÷4 char heuristic) and marked `estimated: true`.
 
-> 💡 The **Usage** tab in the [dashboard](#️-dashboard) shows this data visually — stat cards, a 7-day bar chart, and a per-model breakdown.
+> 💡 The [dashboard](#️-dashboard) shows this data visually — **Usage** for stat cards, bar chart, and model breakdown; **History** for the full searchable request log.
 
 Or query the JSON API directly:
 
