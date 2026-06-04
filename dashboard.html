@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TraePilot Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*
+  WCAG AA contrast ratios on #0d1117 background:
+  #f0f6fc  17.4:1  primary text
+  #c9d1d9  11.6:1  body/cells
+  #8b949e   6.5:1  muted labels
+  #818cf8   6.9:1  accent indigo
+  #34d399  11.5:1  success green
+  #f87171   8.0:1  error red
+*/
+:root {
+  --bg:       #0a0b0f;
+  --surface:  #0d1117;
+  --border:   rgba(255,255,255,.12);
+  --txt-1:    #f0f6fc;
+  --txt-2:    #c9d1d9;
+  --txt-m:    #8b949e;
+  --accent:   #818cf8;
+  --accent-2: #60a5fa;
+  --green:    #34d399;
+  --red:      #f87171;
+  --warn:     #fbbf24;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt-2);font-family:'Inter',system-ui,sans-serif;font-size:13px;line-height:1.5;display:flex;min-height:100vh;overflow:hidden}
+
+/* ── Sidebar ── */
+.sidebar{width:216px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.logo{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
+.logo-name{font-size:15px;font-weight:700;color:var(--txt-1)}
+.logo-name span{background:linear-gradient(135deg,var(--accent),var(--accent-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:11px;color:var(--txt-m);margin-top:2px}
+.nav-sec{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--txt-m);padding:16px 18px 5px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 18px;cursor:pointer;color:var(--txt-m);border-left:3px solid transparent;transition:all .15s;font-size:13px;font-weight:500}
+.nav-item:hover{color:var(--txt-2);background:rgba(255,255,255,.03)}
+.nav-item.active{color:var(--accent);background:rgba(129,140,248,.07);border-left-color:var(--accent)}
+.nav-icon{font-size:14px;width:18px;text-align:center}
+.sidebar-footer{margin-top:auto;padding:14px 18px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
+.status-dot.offline{background:var(--red)}
+.status-label{font-size:12px;color:var(--txt-m)}
+
+/* ── Main ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:auto}
+.topbar{padding:14px 24px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.page-title{font-size:15px;font-weight:600;color:var(--txt-1)}
+.page-subtitle{font-size:11px;color:var(--txt-m);margin-top:2px}
+.period-tabs{display:flex;gap:2px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;padding:3px}
+.ptab{padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;color:var(--txt-m);border:1px solid transparent;transition:all .15s}
+.ptab.active{color:var(--accent);background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.3)}
+.ptab:hover:not(.active){color:var(--txt-2)}
+.content{padding:22px 24px;flex:1}
+
+/* ── Cards ── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent-2));opacity:.6}
+.stat-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--txt-m);margin-bottom:8px}
+.stat-value{font-size:30px;font-weight:700;color:var(--txt-1);letter-spacing:-1.5px;line-height:1}
+.stat-unit{font-size:14px;font-weight:500;color:var(--txt-m);letter-spacing:0;vertical-align:super}
+.stat-tag{display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;border:1px solid transparent}
+.tag-green{color:var(--green);background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.2)}
+.tag-gray{color:var(--txt-m);background:rgba(139,148,158,.1);border-color:rgba(139,148,158,.2)}
+
+/* ── Chart ── */
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 22px;margin-bottom:18px}
+.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.chart-title{font-size:13px;font-weight:600;color:var(--txt-1)}
+.legend{display:flex;gap:16px}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:var(--txt-m)}
+.swatch-r{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.swatch-s{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.chart-area svg{width:100%;height:150px;display:block}
+.x-axis{display:flex;justify-content:space-between;padding:6px 0 0}
+.x-tick{font-size:10px;font-weight:500;color:var(--txt-m);text-align:center;flex:1}
+.x-tick.today{color:var(--accent);font-weight:600}
+
+/* ── Table shared ── */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.table-top{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+.table-title{font-size:13px;font-weight:600;color:var(--txt-1)}
+.table-meta{font-size:11px;color:var(--txt-m)}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;padding:9px 20px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--txt-m);background:rgba(0,0,0,.25);border-bottom:1px solid var(--border)}
+tbody td{padding:11px 20px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:var(--txt-2);font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(255,255,255,.02)}
+.share-wrap{display:flex;align-items:center;gap:8px}
+.share-track{flex:1;height:5px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}
+.share-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.share-pct{font-size:11px;font-weight:600;color:var(--txt-m);width:32px;text-align:right}
+
+/* ── Model cards ── */
+.model-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.model-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.model-id{font-size:13px;font-weight:600;color:var(--txt-1);margin-bottom:4px;word-break:break-all}
+.model-owner{font-size:11px;color:var(--txt-m);margin-bottom:12px}
+.copy-btn{font-size:11px;font-weight:500;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--txt-2);cursor:pointer;transition:all .15s;width:100%}
+.copy-btn:hover{background:rgba(255,255,255,.08);color:var(--txt-1)}
+.copy-btn.copied{color:var(--green);border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+.model-chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(129,140,248,.12);color:var(--accent);border:1px solid rgba(129,140,248,.25)}
+
+/* ── Test Chat ── */
+.test-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px}
+.test-desc{color:var(--txt-m);margin-bottom:16px;font-size:13px}
+.test-model-label{font-size:11px;color:var(--txt-m);margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:.7px}
+.run-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 24px;border-radius:8px;border:1px solid rgba(129,140,248,.35);background:rgba(129,140,248,.12);color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.run-btn:hover:not(:disabled){background:rgba(129,140,248,.2);border-color:rgba(129,140,248,.5)}
+.run-btn:disabled{opacity:.5;cursor:not-allowed}
+.run-btn.success{color:var(--green);background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3)}
+.run-btn.error{color:var(--red);background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3)}
+.result-box{margin-top:20px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;padding:16px;display:none}
+.result-box.visible{display:block}
+.result-meta{display:flex;gap:12px;margin-bottom:10px;font-size:11px;font-weight:500;color:var(--txt-m)}
+.result-meta span{padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.06)}
+.result-text{font-size:13px;color:var(--txt-2);white-space:pre-wrap;word-break:break-word}
+.result-text.err{color:var(--red)}
+
+/* ── Config table ── */
+.config-table tbody td:first-child{color:var(--txt-m);font-family:monospace;font-size:12px;width:260px}
+.config-table tbody td:last-child{color:var(--txt-1)}
+.masked-wrap{display:flex;align-items:center;gap:8px}
+.reveal-btn{font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--txt-m);cursor:pointer;transition:all .15s}
+.reveal-btn:hover{color:var(--txt-2);background:rgba(255,255,255,.08)}
+
+/* ── Utility ── */
+.section{display:none}
+.section.active{display:block}
+.refresh-btn{font-size:11px;font-weight:500;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--txt-m);cursor:pointer;transition:all .15s}
+.refresh-btn:hover{color:var(--txt-2);background:rgba(255,255,255,.08)}
+.error-banner{display:none;align-items:center;justify-content:space-between;gap:12px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--red)}
+.error-banner.visible{display:flex}
+.retry-btn{font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.1);color:var(--red);cursor:pointer}
+.skeleton{background:rgba(255,255,255,.06);border-radius:6px;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── Auth overlay ── */
+#auth-overlay{display:none;position:fixed;inset:0;background:rgba(10,11,15,.95);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#auth-overlay.visible{display:flex}
+.auth-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;width:340px;text-align:center}
+.auth-title{font-size:16px;font-weight:700;color:var(--txt-1);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--txt-m);margin-bottom:20px}
+.auth-input{width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--txt-1);font-size:13px;font-family:inherit;outline:none;transition:border-color .15s}
+.auth-input:focus{border-color:rgba(129,140,248,.5)}
+.auth-btn{margin-top:10px;width:100%;padding:9px;border-radius:7px;border:1px solid rgba(129,140,248,.4);background:rgba(129,140,248,.15);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.auth-btn:hover{background:rgba(129,140,248,.25)}
+.auth-error{font-size:12px;color:var(--red);margin-top:8px;min-height:16px}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar" aria-label="Main navigation">
+  <div class="logo">
+    <div class="logo-name">Trae<span>Pilot</span></div>
+    <div class="logo-sub">OpenAI-compatible proxy</div>
+  </div>
+
+  <div class="nav-sec">Monitor</div>
+  <div class="nav-item active" data-section="usage" onclick="showSection('usage')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('usage')}" role="button" tabindex="0">
+    <span class="nav-icon" aria-hidden="true">📊</span> Usage
+  </div>
+
+  <div class="nav-sec">API</div>
+  <div class="nav-item" data-section="models" onclick="showSection('models')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('models')}" role="button" tabindex="0">
+    <span class="nav-icon" aria-hidden="true">🧩</span> Models
+  </div>
+  <div class="nav-item" data-section="testchat" onclick="showSection('testchat')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('testchat')}" role="button" tabindex="0">
+    <span class="nav-icon" aria-hidden="true">💬</span> Test Chat
+  </div>
+
+  <div class="nav-sec">System</div>
+  <div class="nav-item" data-section="config" onclick="showSection('config')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('config')}" role="button" tabindex="0">
+    <span class="nav-icon" aria-hidden="true">⚙️</span> Config
+  </div>
+
+  <div class="sidebar-footer">
+    <div id="status-dot" class="status-dot" role="img" aria-label="Status"></div>
+    <div id="status-label" class="status-label">Checking…</div>
+  </div>
+</nav>
+
+<!-- Main -->
+<main class="main">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <div id="page-title" class="page-title">Usage</div>
+      <div id="page-subtitle" class="page-subtitle">Token &amp; request tracking · estimated via ÷4 heuristic</div>
+    </div>
+    <div id="period-tabs" class="period-tabs" role="tablist" aria-label="Time period" style="display:none">
+      <div class="ptab active" data-period="24h" onclick="setPeriod('24h')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('24h')}" role="tab" aria-selected="true" tabindex="0">24h</div>
+      <div class="ptab" data-period="7d"  onclick="setPeriod('7d')"  onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('7d')}"  role="tab" aria-selected="false" tabindex="0">7d</div>
+      <div class="ptab" data-period="30d" onclick="setPeriod('30d')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('30d')}" role="tab" aria-selected="false" tabindex="0">30d</div>
+      <div class="ptab" data-period="all" onclick="setPeriod('all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setPeriod('all')}" role="tab" aria-selected="false" tabindex="0">All</div>
+    </div>
+    <div id="topbar-action"></div>
+  </div>
+
+  <div class="content">
+
+    <!-- Usage section -->
+    <section id="section-usage" class="section active" aria-label="Usage statistics">
+      <div id="usage-error" class="error-banner" role="alert">
+        <span>⚠ Failed to load usage data</span>
+        <button class="retry-btn" onclick="loadUsage()">Retry</button>
+      </div>
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="stat-label">Requests</div><div id="s-requests" class="stat-value skeleton" style="height:36px;width:80px">&nbsp;</div></div>
+        <div class="stat-card"><div class="stat-label">Total Tokens</div><div id="s-total" class="stat-value skeleton" style="height:36px;width:80px">&nbsp;</div></div>
+        <div class="stat-card"><div class="stat-label">Prompt Tokens</div><div id="s-prompt" class="stat-value skeleton" style="height:36px;width:80px">&nbsp;</div></div>
+        <div class="stat-card"><div class="stat-label">Completion Tokens</div><div id="s-completion" class="stat-value skeleton" style="height:36px;width:80px">&nbsp;</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">Daily Activity — Last 7 Days</div>
+          <div class="legend" aria-label="Chart legend">
+            <div class="legend-item"><div class="swatch-r" style="background:var(--accent)" aria-hidden="true"></div>Requests</div>
+            <div class="legend-item"><div class="swatch-s" style="background:var(--green)" aria-hidden="true"></div>Tokens ÷ 1k</div>
+          </div>
+        </div>
+        <div id="chart-area" class="chart-area" role="img" aria-label="Bar chart of daily activity"></div>
+      </div>
+      <div class="table-card">
+        <div class="table-top">
+          <div class="table-title">By Model</div>
+          <div id="by-model-period" class="table-meta">last 24 hours</div>
+        </div>
+        <table aria-label="Usage by model">
+          <thead><tr>
+            <th scope="col">Model</th>
+            <th scope="col">Requests</th>
+            <th scope="col">Prompt Tokens</th>
+            <th scope="col">Completion Tokens</th>
+            <th scope="col">Share</th>
+          </tr></thead>
+          <tbody id="model-table-body"><tr><td colspan="5" style="text-align:center;color:var(--txt-m);padding:20px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Models section -->
+    <section id="section-models" class="section" aria-label="Available models">
+      <div id="models-error" class="error-banner" role="alert">
+        <span>⚠ Failed to load models</span>
+        <button class="retry-btn" onclick="loadModels()">Retry</button>
+      </div>
+      <div id="model-grid" class="model-grid"></div>
+    </section>
+
+    <!-- Test Chat section -->
+    <section id="section-testchat" class="section" aria-label="Test chat">
+      <div class="test-card">
+        <div class="test-model-label">Test Model</div>
+        <div id="test-model-display" class="stat-tag tag-gray" style="margin-bottom:16px">loading…</div>
+        <p class="test-desc">Sends <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:3px;color:var(--txt-1)">"Hello! Are you working?"</code> to the first available model and shows the response.</p>
+        <button id="run-btn" class="run-btn" onclick="runTest()">▶ Run Test</button>
+        <div id="result-box" class="result-box" role="status" aria-live="polite">
+          <div class="result-meta" id="result-meta"></div>
+          <div class="result-text" id="result-text"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Config section -->
+    <section id="section-config" class="section" aria-label="Configuration">
+      <div id="config-error" class="error-banner" role="alert">
+        <span>⚠ Failed to load config</span>
+        <button class="retry-btn" onclick="loadConfig()">Retry</button>
+      </div>
+      <div class="table-card">
+        <div class="table-top">
+          <div class="table-title">Environment Config</div>
+          <div class="table-meta">read-only · sensitive values masked</div>
+        </div>
+        <table class="config-table" aria-label="Configuration values">
+          <thead><tr><th scope="col">Key</th><th scope="col">Value</th></tr></thead>
+          <tbody id="config-table-body"><tr><td colspan="2" style="text-align:center;color:var(--txt-m);padding:20px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div><!-- /content -->
+</main>
+
+<!-- Auth overlay -->
+<div id="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  <div class="auth-box">
+    <div class="auth-title" id="auth-title">API Key Required</div>
+    <div class="auth-sub">This proxy is protected. Enter your API key to continue.</div>
+    <input class="auth-input" id="auth-input" type="password" placeholder="Bearer token…" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')submitKey()">
+    <button class="auth-btn" onclick="submitKey()">Continue</button>
+    <div class="auth-error" id="auth-error" aria-live="polite"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let _apiKey = sessionStorage.getItem('tp_key') || '';
+let _period = '24h';
+let _testModel = null;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function api(url, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (_apiKey) headers['Authorization'] = 'Bearer ' + _apiKey;
+  return fetch(url, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+}
+
+function showAuthOverlay() {
+  document.getElementById('auth-overlay').classList.add('visible');
+  document.getElementById('auth-input').focus();
+}
+
+function hideAuthOverlay() {
+  document.getElementById('auth-overlay').classList.remove('visible');
+}
+
+async function submitKey() {
+  const key = document.getElementById('auth-input').value.trim();
+  const errEl = document.getElementById('auth-error');
+  errEl.textContent = '';
+  if (!key) { errEl.textContent = 'Please enter a key.'; return; }
+  _apiKey = key;
+  const resp = await fetch('/config', { headers: { Authorization: 'Bearer ' + key } });
+  if (resp.ok) {
+    sessionStorage.setItem('tp_key', key);
+    hideAuthOverlay();
+    init();
+  } else {
+    _apiKey = '';
+    errEl.textContent = 'Invalid key. Try again.';
+    document.getElementById('auth-input').value = '';
+    document.getElementById('auth-input').focus();
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  const resp = await api('/config');
+  if (resp.status === 401) { showAuthOverlay(); return; }
+
+  // Proxy is reachable — update status dot
+  setStatus(resp.ok);
+
+  // Load default section and preload test model
+  loadUsage();
+  loadTestModel();
+  // Show period tabs for usage section
+  document.getElementById('period-tabs').style.display = 'flex';
+}
+
+function setStatus(ok) {
+  const dot = document.getElementById('status-dot');
+  const lbl = document.getElementById('status-label');
+  dot.className = 'status-dot' + (ok ? '' : ' offline');
+  dot.setAttribute('aria-label', ok ? 'Online' : 'Offline');
+  lbl.textContent = ok ? 'Proxy running' : 'Proxy unreachable';
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+const TITLES = {
+  usage:    ['Usage',     'Token & request tracking · estimated via ÷4 heuristic'],
+  models:   ['Models',    'Available models from Trae API'],
+  testchat: ['Test Chat', 'One-click connectivity test'],
+  config:   ['Config',    'Environment variables · sensitive fields masked server-side'],
+};
+
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('section-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  document.querySelector('[data-section="' + name + '"]').classList.add('active');
+  const [title, subtitle] = TITLES[name] || [name, ''];
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-subtitle').textContent = subtitle;
+  document.getElementById('period-tabs').style.display = name === 'usage' ? 'flex' : 'none';
+  document.getElementById('topbar-action').innerHTML = '';
+  if (name === 'models') {
+    document.getElementById('topbar-action').innerHTML =
+      '<button class="refresh-btn" onclick="loadModels()">⟳ Refresh</button>';
+  }
+  // Lazy-load on first visit
+  if (name === 'usage')    loadUsage();
+  if (name === 'models')   loadModels();
+  if (name === 'config')   loadConfig();
+}
+
+// ── Period tabs ───────────────────────────────────────────────────────────────
+function setPeriod(p) {
+  _period = p;
+  document.querySelectorAll('.ptab').forEach(t => {
+    const active = t.dataset.period === p;
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', String(active));
+  });
+  loadUsage();
+}
+
+// ── Usage ─────────────────────────────────────────────────────────────────────
+function fmt(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + '<span class="stat-unit">M</span>';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + '<span class="stat-unit">k</span>';
+  return String(n);
+}
+
+async function loadUsage() {
+  showErr('usage', false);
+  try {
+    const [sResp, dResp] = await Promise.all([
+      api('/usage/stats?period=' + _period),
+      api('/usage/daily?days=7'),
+    ]);
+    if (!sResp.ok || !dResp.ok) { showErr('usage', true); return; }
+    const stats = await sResp.json();
+    const daily = await dResp.json();
+    renderStats(stats);
+    renderChart(daily.items);
+    renderModelTable(stats.by_model);
+    document.getElementById('by-model-period').textContent = 'last ' + _period;
+  } catch {
+    showErr('usage', true);
+  }
+}
+
+function renderStats(s) {
+  document.getElementById('s-requests').innerHTML   = fmt(s.total_requests);
+  document.getElementById('s-total').innerHTML      = fmt(s.total_tokens);
+  document.getElementById('s-prompt').innerHTML     = fmt(s.total_prompt_tokens);
+  document.getElementById('s-completion').innerHTML = fmt(s.total_completion_tokens);
+  // Remove skeleton styles
+  ['s-requests','s-total','s-prompt','s-completion'].forEach(id => {
+    document.getElementById(id).classList.remove('skeleton');
+    document.getElementById(id).style.height = '';
+    document.getElementById(id).style.width  = '';
+  });
+}
+
+function renderChart(items) {
+  const area = document.getElementById('chart-area');
+  if (!items || !items.length) {
+    area.innerHTML = '<p style="color:var(--txt-m);padding:20px;text-align:center">No data for this period.</p>';
+    return;
+  }
+  // Sort ascending by date, take last 7
+  const rows = [...items].sort((a,b) => a.date < b.date ? -1 : 1).slice(-7);
+  const maxReq = Math.max(...rows.map(r => r.requests), 1);
+  const maxTok = Math.max(...rows.map(r => r.total_tokens / 1000), 1);
+  const W = 700, H = 150, PAD = 10, BAR = 36, GAP = 6;
+  const SLOT = (W - PAD * 2) / rows.length;
+  const today = new Date().toISOString().slice(0, 10);
+
+  let bars = '';
+  const xLabels = [];
+  rows.forEach((r, i) => {
+    const x0 = PAD + i * SLOT;
+    const reqH = Math.round(((H - 20) * r.requests) / maxReq);
+    const tokH = Math.round(((H - 20) * (r.total_tokens / 1000)) / maxTok);
+    bars += `<rect x="${x0}" y="${H - reqH}" width="${BAR}" height="${reqH}" rx="5" fill="url(#gr)"/>`;
+    bars += `<rect x="${x0 + BAR + GAP}" y="${H - tokH}" width="${BAR}" height="${tokH}" rx="5" fill="url(#gg)" opacity=".85"/>`;
+    const label = r.date.slice(5); // MM-DD
+    xLabels.push(`<div class="x-tick${r.date === today ? ' today' : ''}">${label}</div>`);
+  });
+
+  area.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#60a5fa" stop-opacity=".75"/>
+        </linearGradient>
+        <linearGradient id="gg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#10b981" stop-opacity=".75"/>
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="${H*0.33}" x2="${W}" y2="${H*0.33}" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      <line x1="0" y1="${H*0.66}" x2="${W}" y2="${H*0.66}" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      ${bars}
+    </svg>
+    <div class="x-axis">${xLabels.join('')}</div>`;
+}
+
+function renderModelTable(byModel) {
+  const tbody = document.getElementById('model-table-body');
+  if (!byModel || !Object.keys(byModel).length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--txt-m);padding:20px">No data.</td></tr>';
+    return;
+  }
+  const entries = Object.entries(byModel).sort((a,b) => b[1].requests - a[1].requests);
+  const totalReq = entries.reduce((s,[,v]) => s + v.requests, 0) || 1;
+  tbody.innerHTML = entries.map(([model, v]) => {
+    const pct = Math.round((v.requests / totalReq) * 100);
+    return `<tr>
+      <td><span class="model-chip">${esc(model)}</span></td>
+      <td>${v.requests}</td>
+      <td>${(v.prompt_tokens||0).toLocaleString()}</td>
+      <td>${(v.completion_tokens||0).toLocaleString()}</td>
+      <td><div class="share-wrap"><div class="share-track"><div class="share-fill" style="width:${pct}%"></div></div><span class="share-pct">${pct}%</span></div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Models ────────────────────────────────────────────────────────────────────
+async function loadModels() {
+  showErr('models', false);
+  document.getElementById('model-grid').innerHTML =
+    '<div style="color:var(--txt-m);padding:20px">Loading…</div>';
+  try {
+    const resp = await api('/v1/models');
+    if (!resp.ok) { showErr('models', true); return; }
+    const data = await resp.json();
+    const models = data.data || [];
+    if (!models.length) {
+      document.getElementById('model-grid').innerHTML =
+        '<div style="color:var(--txt-m);padding:20px">No models returned.</div>';
+      return;
+    }
+    document.getElementById('model-grid').innerHTML = models.map(m => `
+      <div class="model-card">
+        <div class="model-id">${esc(m.id)}</div>
+        <div class="model-owner">${esc(m.owned_by || 'trae')}</div>
+        <button class="copy-btn" data-model-id="${esc(m.id)}" onclick="copyModel(this)">Copy ID</button>
+      </div>`).join('');
+  } catch {
+    showErr('models', true);
+  }
+}
+
+function copyModel(btn) {
+  const id = btn.dataset.modelId;
+  navigator.clipboard.writeText(id).then(() => {
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy ID'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    btn.textContent = 'Failed';
+    setTimeout(() => { btn.textContent = 'Copy ID'; }, 2000);
+  });
+}
+
+// ── Test Chat ─────────────────────────────────────────────────────────────────
+async function loadTestModel() {
+  const el = document.getElementById('test-model-display');
+  try {
+    const resp = await api('/v1/models');
+    if (!resp.ok) {
+      el.textContent = 'Could not load models';
+      document.getElementById('run-btn').disabled = true;
+      document.getElementById('run-btn').title = 'Could not load models';
+      return;
+    }
+    const models = (await resp.json()).data || [];
+    if (!models.length) {
+      el.textContent = 'No models available';
+      document.getElementById('run-btn').disabled = true;
+      return;
+    }
+    _testModel = models[0].id;
+    el.textContent = _testModel;
+    el.className = 'model-chip';
+  } catch {
+    el.textContent = 'Could not load models';
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('run-btn').title = 'Could not load models';
+  }
+}
+
+async function runTest() {
+  if (!_testModel) return;
+  const btn = document.getElementById('run-btn');
+  const resultBox = document.getElementById('result-box');
+  btn.disabled = true;
+  btn.className = 'run-btn';
+  btn.textContent = '⏳ Testing…';
+  resultBox.classList.remove('visible');
+  const t0 = Date.now();
+  try {
+    const resp = await api('/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: _testModel,
+        messages: [{ role: 'user', content: 'Hello! Are you working?' }],
+        stream: false,
+      }),
+    });
+    const elapsed = Date.now() - t0;
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || JSON.stringify(err));
+    }
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content ?? '(empty response)';
+    showResult({ text, model: _testModel, elapsed, ok: true });
+    btn.textContent = '✓ Test passed';
+    btn.className = 'run-btn success';
+  } catch (e) {
+    showResult({ text: e.message, ok: false });
+    btn.textContent = '✕ Test failed';
+    btn.className = 'run-btn error';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showResult({ text, model, elapsed, ok }) {
+  const box = document.getElementById('result-box');
+  const meta = document.getElementById('result-meta');
+  const txt = document.getElementById('result-text');
+  box.classList.add('visible');
+  meta.innerHTML = ok
+    ? `<span>${esc(model)}</span><span>${elapsed} ms</span>`
+    : '';
+  txt.className = 'result-text' + (ok ? '' : ' err');
+  txt.textContent = text;
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const SENSITIVE_KEYS = new Set(['API_KEY','TRAE_IDE_TOKEN','TRAE_MACHINE_ID','TRAE_DEVICE_ID']);
+
+async function loadConfig() {
+  showErr('config', false);
+  try {
+    const resp = await api('/config');
+    if (!resp.ok) { showErr('config', true); return; }
+    const data = await resp.json();
+    const tbody = document.getElementById('config-table-body');
+    tbody.innerHTML = Object.entries(data).map(([k, v]) => {
+      if (SENSITIVE_KEYS.has(k)) {
+        const displayVal = (v === '(not set)') ? '(not set)' : '••••••';
+        return `<tr>
+          <td>${esc(k)}</td>
+          <td><div class="masked-wrap">
+            <span id="cfg-${esc(k)}" style="letter-spacing:.1em">${esc(displayVal)}</span>
+            ${v === '(not set)' ? '' :
+              `<button class="reveal-btn" onclick="revealCfg(this,'${esc(k)}')" aria-label="Reveal value for ${esc(k)}">👁 Reveal</button>`}
+          </div></td>
+        </tr>`;
+      }
+      return `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`;
+    }).join('');
+  } catch {
+    showErr('config', true);
+  }
+}
+
+function revealCfg(btn, key) {
+  document.getElementById('cfg-' + key).textContent = '[stored in .env — not sent to browser]';
+  btn.style.display = 'none';
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function showErr(section, visible) {
+  const el = document.getElementById(section + '-error');
+  if (el) el.classList.toggle('visible', visible);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
