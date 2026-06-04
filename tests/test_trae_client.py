@@ -3,52 +3,86 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 
-def test_build_trae_payload_stream():
-    import sys, os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# ── build_trae_payload ────────────────────────────────────────────────────────
+# Current signature: build_trae_payload(messages: list, model: str) -> dict
+# The old tests called it with (messages, model, stream, max_tokens) — those
+# args were removed when the upstream protocol switched from OpenAI SSE to
+# Trae's named-event prompt-pipeline format.
+
+def test_build_trae_payload_sets_model_name():
     from trae_client import build_trae_payload
-    payload = build_trae_payload([{'role': 'user', 'content': 'hi'}], 'gpt-4o', True, 100)
-    assert payload['stream'] is True
-    assert payload['model'] == 'gpt-4o'
-    assert payload['max_tokens'] == 100
+    payload = build_trae_payload([{'role': 'user', 'content': 'hi'}], 'gpt-4o')
+    assert payload['model_name'] == 'gpt-4o'
 
 
-def test_build_trae_payload_no_max_tokens():
+def test_build_trae_payload_sets_user_input_from_last_message():
     from trae_client import build_trae_payload
-    payload = build_trae_payload([{'role': 'user', 'content': 'hi'}], 'gpt-4o', False)
-    assert 'max_tokens' not in payload
+    payload = build_trae_payload([{'role': 'user', 'content': 'hello world'}], 'gpt-4o')
+    assert payload['user_input'] == 'hello world'
 
 
-def test_trae_events_parses_chunk():
-    from trae_client import trae_events
-    chunk = json.dumps({
-        'id': 'abc', 'created': 1000, 'model': 'gpt-4o',
-        'choices': [{'delta': {'content': 'Hello'}, 'finish_reason': None}]
-    })
-    event = trae_events(f'data: {chunk}')
-    assert event is not None
-    assert event['choices'][0]['delta']['content'] == 'Hello'
-    assert event['done'] is False
+def test_build_trae_payload_puts_all_but_last_in_history():
+    from trae_client import build_trae_payload
+    messages = [
+        {'role': 'user',      'content': 'first'},
+        {'role': 'assistant', 'content': 'reply'},
+        {'role': 'user',      'content': 'last'},
+    ]
+    payload = build_trae_payload(messages, 'gpt-4o')
+    assert payload['user_input'] == 'last'
+    assert len(payload['chat_history']) == 2
+    assert payload['current_turn'] == 2
 
 
-def test_trae_events_done():
-    from trae_client import trae_events
-    event = trae_events('data: [DONE]')
-    assert event == {'done': True}
+def test_build_trae_payload_intent_name():
+    from trae_client import build_trae_payload
+    payload = build_trae_payload([{'role': 'user', 'content': 'hi'}], 'gpt-4o')
+    assert payload['intent_name'] == 'general_qa_intent'
 
 
-def test_trae_events_ignores_non_data():
-    from trae_client import trae_events
-    assert trae_events('') is None
-    assert trae_events(': ping') is None
-    assert trae_events('event: message') is None
+# ── _delta ────────────────────────────────────────────────────────────────────
+# _delta replaced the old trae_events() SSE line parser.  It merges reasoning
+# and response chunks, wrapping reasoning content in <think></think>.
+
+def test_delta_plain_response_no_reasoning():
+    from trae_client import _delta
+    think_open = [False]
+    out = _delta('', 'hello', think_open)
+    assert out == 'hello'
+    assert think_open[0] is False
 
 
-def test_trae_events_empty_choices():
-    from trae_client import trae_events
-    chunk = json.dumps({'id': 'x', 'choices': []})
-    assert trae_events(f'data: {chunk}') is None
+def test_delta_opens_think_tag_on_first_reasoning_chunk():
+    from trae_client import _delta
+    think_open = [False]
+    out = _delta('some reasoning', '', think_open)
+    assert out == '<think>\nsome reasoning'
+    assert think_open[0] is True
 
+
+def test_delta_continues_reasoning_inside_open_think_tag():
+    from trae_client import _delta
+    think_open = [True]
+    out = _delta('more reasoning', '', think_open)
+    assert out == 'more reasoning'
+    assert think_open[0] is True
+
+
+def test_delta_closes_think_tag_on_first_response_chunk():
+    from trae_client import _delta
+    think_open = [True]
+    out = _delta('', 'response text', think_open)
+    assert out == '\n</think>\n\nresponse text'
+    assert think_open[0] is False
+
+
+def test_delta_empty_inputs_produce_empty_output():
+    from trae_client import _delta
+    think_open = [False]
+    assert _delta('', '', think_open) == ''
+
+
+# ── list_models ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_list_models_parsing():
