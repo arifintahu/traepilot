@@ -6,6 +6,7 @@ from typing import Optional, Literal
 from fastapi import FastAPI, HTTPException, Depends, APIRouter, Query
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config import BIND_HOST, BIND_PORT, API_KEY
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="TraePilot", version="1.0.0", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 security = HTTPBearer(auto_error=False)
 
 
