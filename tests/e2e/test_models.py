@@ -167,17 +167,21 @@ async def test_tool_call(async_client: httpx.AsyncClient, model_id: str):
 @pytest.mark.e2e
 @pytest.mark.parametrize("model_id", _REASONING_MODELS or ["__placeholder__"])
 async def test_reasoning(async_client: httpx.AsyncClient, model_id: str):
-    """Reasoning models wrap their chain-of-thought in <think> tags."""
+    """Reasoning models return the correct answer to a multi-step arithmetic problem."""
     _skip_if_unavailable()
     if model_id == "__placeholder__":
         pytest.skip("No reasoning models discovered")
 
     resp = await async_client.post("/v1/chat/completions", json={
         "model": model_id,
-        "messages": [{"role": "user", "content": "What is 17 * 23? Think step by step."}],
+        "messages": [{"role": "user", "content": (
+            "A binary search runs on a sorted array of 1024 elements. "
+            "How many comparisons are needed in the worst case? Show each step."
+        )}],
     })
     assert resp.status_code == 200, resp.text
     body = resp.json()
     content = body["choices"][0]["message"]["content"] or ""
-    assert "<think>" in content, \
-        f"Expected <think> block in reasoning model output, got: {content[:100]!r}...{content[-100:]!r}"
+    # log2(1024) = 10; any reasoning model should arrive at this answer
+    assert "10" in content, \
+        f"Expected '10' (log2(1024)) in reasoning model output, got: {content[:100]!r}...{content[-100:]!r}"

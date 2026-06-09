@@ -50,11 +50,27 @@ def build_trae_payload(messages: list, model: str) -> dict:
     def as_text(content) -> str:
         return content if isinstance(content, str) else str(content)
 
-    last_input = as_text(messages[-1]["content"]) if messages else ""
+    # Trae's chat endpoint does not forward system-role messages to the model.
+    # Extract them and prepend their content to user_input so the model sees them.
+    system_parts: list[str] = []
+    chat_messages: list[dict] = []
+    for m in messages:
+        if m["role"] == "system":
+            system_parts.append(as_text(m["content"]))
+        else:
+            chat_messages.append(m)
+    if not chat_messages:          # safety: all messages were system — keep as-is
+        chat_messages = list(messages)
+        system_parts = []
+
+    last_input = as_text(chat_messages[-1]["content"]) if chat_messages else ""
+    if system_parts:
+        last_input = "\n\n".join(system_parts) + "\n\n---\n\n" + last_input
+
     session_id = str(uuid.uuid4())
 
     history = []
-    for m in messages[:-1]:
+    for m in chat_messages[:-1]:
         history.append({
             "role": m["role"],
             "content": as_text(m["content"]),
@@ -75,7 +91,7 @@ def build_trae_payload(messages: list, model: str) -> dict:
         "chat_history": history,
         "session_id": session_id,
         "conversation_id": session_id,
-        "current_turn": max(len(messages) - 1, 0),
+        "current_turn": max(len(chat_messages) - 1, 0),
         "valid_turns": list(range(len(history))),
         "multi_media": [],
         "model_name": model,
@@ -120,7 +136,9 @@ async def _trae_chat_events(messages: list, model: str):
 
 
 def _delta(reasoning: str, response: str, think_open: list) -> str:
-    """Build one content delta, wrapping reasoning_content in <think></think>."""
+    """Build one content delta, wrapping reasoning_content in <think></think>.
+    Note: Trae's API currently streams all content in the 'response' field;
+    'reasoning_content' is supported here for forward compatibility."""
     out = ""
     if reasoning:
         out += ("<think>\n" + reasoning) if not think_open[0] else reasoning
@@ -167,9 +185,18 @@ def _build_tools_system_prompt(tools: list, tool_choice) -> str:
 
 
 def _parse_tool_call_response(text: str) -> list | None:
-    """Return parsed tool_calls list if text is a valid tool call JSON, else None."""
+    """Return parsed tool_calls list if text is a valid tool call JSON, else None.
+    Handles models that wrap JSON in markdown code fences (```json ... ```)."""
+    stripped = text.strip()
+    # Strip markdown code fences that some models add around JSON output
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # Drop first line (``` or ```json) and last line (```)
+        inner = "\n".join(lines[1:-1]).strip() if len(lines) > 2 else ""
+        if inner:
+            stripped = inner
     try:
-        obj = json.loads(text.strip())
+        obj = json.loads(stripped)
         calls = obj.get("tool_calls") if isinstance(obj, dict) else None
         if not isinstance(calls, list) or not calls:
             return None

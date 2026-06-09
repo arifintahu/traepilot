@@ -231,6 +231,21 @@ def test_parse_tool_call_response_adds_missing_id():
     assert calls[0]['id'].startswith('call_')
 
 
+def test_parse_tool_call_response_strips_markdown_fences():
+    from trae_client import _parse_tool_call_response
+    text = '```json\n{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\\"city\\":\\"Paris\\"}"}}]}\n```'
+    calls = _parse_tool_call_response(text)
+    assert calls is not None
+    assert calls[0]['function']['name'] == 'get_weather'
+
+
+def test_parse_tool_call_response_strips_plain_fences():
+    from trae_client import _parse_tool_call_response
+    text = '```\n{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "fn", "arguments": "{}"}}]}\n```'
+    calls = _parse_tool_call_response(text)
+    assert calls is not None
+
+
 # ── _prepare_messages ─────────────────────────────────────────────────────────
 
 def test_prepare_messages_injects_system_prompt():
