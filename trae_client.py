@@ -9,6 +9,22 @@ from config import TRAE_BASE_URL, TRAE_HEADERS, EXCLUDE_MODELS
 # (archived) trae2api project and verified against the live API.
 CHAT_ENDPOINT = "/api/ide/v1/chat"
 
+# Exact model IDs → capabilities (matched case-insensitively).
+# New models not in this map default to ["streaming"].
+_CAPABILITIES: dict[str, list[str]] = {
+    "gemini-2.5-pro-preview-03-25": ["tools", "streaming", "vision", "reasoning"],
+    "gemini_2.5_flash":             ["tools", "streaming", "vision", "reasoning"],
+    "gpt-4.1-2025-04-14":           ["tools", "streaming", "vision"],
+    "gpt-4o":                       ["tools", "streaming", "vision"],
+    "deepseek-v3-0324":             ["tools", "streaming"],
+    "deepseek-v3":                  ["tools", "streaming"],
+    "deepseek-r1":                  ["tools", "streaming", "reasoning"],
+}
+
+
+def _get_capabilities(model_id: str) -> list[str]:
+    return _CAPABILITIES.get(model_id.lower(), ["streaming"])
+
 
 def _variables(last_input: str) -> str:
     """The stringified `variables` blob Trae's prompt pipeline expects."""

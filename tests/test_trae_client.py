@@ -107,3 +107,27 @@ async def test_list_models_parsing():
     assert models[0]['id'] == 'claude-3-5-sonnet'
     assert models[1]['id'] == 'gpt-4o'
     assert all(m['object'] == 'model' for m in models)
+
+
+# ── _get_capabilities ─────────────────────────────────────────────────────────
+
+def test_get_capabilities_exact_match():
+    from trae_client import _get_capabilities
+    caps = _get_capabilities('gemini-2.5-pro-preview-03-25')
+    assert set(caps) == {'tools', 'streaming', 'vision', 'reasoning'}
+
+def test_get_capabilities_case_insensitive():
+    from trae_client import _get_capabilities
+    assert 'tools' in _get_capabilities('DeepSeek-R1')
+    assert 'reasoning' in _get_capabilities('deepseek-r1')
+
+def test_get_capabilities_default_streaming():
+    from trae_client import _get_capabilities
+    caps = _get_capabilities('some-unknown-model')
+    assert caps == ['streaming']
+
+def test_get_capabilities_deepseek_v3():
+    from trae_client import _get_capabilities
+    caps = _get_capabilities('deepseek-V3')
+    assert 'tools' in caps
+    assert 'reasoning' not in caps
