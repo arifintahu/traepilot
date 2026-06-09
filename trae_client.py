@@ -140,7 +140,8 @@ def _convert_tool_messages(messages: list) -> list:
             tid = m.get("tool_call_id", "")
             out.append({"role": "user", "content": f"[Tool result for {tid}: {m.get('content', '')}]"})
         elif role == "assistant" and m.get("tool_calls"):
-            parts = []
+            text_preamble = m.get("content") or ""
+            parts = [text_preamble] if text_preamble else []
             for tc in m["tool_calls"]:
                 fn = tc.get("function", {})
                 parts.append(f"[Called: {fn.get('name', '')}({fn.get('arguments', '')})]")
@@ -216,7 +217,7 @@ async def stream_completion(
         if tool_calls:
             chunk = {
                 "id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
-                "choices": [{"index": 0, "delta": {"role": "assistant", "content": None, "tool_calls": tool_calls}, "finish_reason": "tool_calls"}],
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": None, "tool_calls": [{"index": i, **tc} for i, tc in enumerate(tool_calls)]}, "finish_reason": "tool_calls"}],
             }
             yield f"data: {json.dumps(chunk)}\n\n"
         else:

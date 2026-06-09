@@ -174,6 +174,16 @@ def test_convert_assistant_tool_calls_to_text():
     assert 'get_weather' in out[0]['content']
 
 
+def test_convert_assistant_preserves_text_content_with_tool_calls():
+    from trae_client import _convert_tool_messages
+    msgs = [{'role': 'assistant', 'content': 'Sure, let me look that up.', 'tool_calls': [
+        {'id': 'call_1', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{}'}}
+    ]}]
+    out = _convert_tool_messages(msgs)
+    assert 'Sure, let me look that up.' in out[0]['content']
+    assert 'get_weather' in out[0]['content']
+
+
 def test_convert_plain_messages_unchanged():
     from trae_client import _convert_tool_messages
     msgs = [{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'hi'}]
@@ -310,3 +320,4 @@ async def test_stream_completion_emits_tool_call_chunk():
     choice = payload['choices'][0]
     assert choice['finish_reason'] == 'tool_calls'
     assert choice['delta']['tool_calls'][0]['function']['name'] == 'get_weather'
+    assert choice['delta']['tool_calls'][0].get('index') == 0
