@@ -225,6 +225,20 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--txt
 .result-role{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--accent-2);font-family:var(--mono)}
 .result-text{font-size:13.5px;color:var(--txt-1);margin-top:8px;line-height:1.6}
 
+/* ── Test-chat API key entry ─────────────────────────────────── */
+.tc-key-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+.tc-key-input{
+  flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:7px 12px;font-size:13px;color:var(--txt-1);font-family:var(--mono);outline:none;
+  transition:border-color .15s;
+}
+.tc-key-input:focus{border-color:var(--accent)}
+.tc-key-btn{
+  flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:8px;
+  padding:7px 14px;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s;
+}
+.tc-key-btn:hover{opacity:.85}
+
 /* ── Config ──────────────────────────────────────────────────── */
 .cfg-group{border-bottom:1px solid var(--border)}
 .cfg-group:last-child{border-bottom:none}

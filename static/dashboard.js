@@ -44,6 +44,8 @@ sessionStorage.removeItem('tp_key');
 /* ── State ───────────────────────────────────────────────────── */
 let _period    = '24h';
 let _models    = [];
+let _apiKeySet  = false;  // true when /config reports API_KEY is configured
+let _testApiKey = '';     // Bearer token entered by the user for test chat (in-memory only)
 let _dailyData = [];
 let _allHistory = [];
 let _historyOffset = 0;
@@ -398,19 +400,34 @@ async function runTest() {
   box.className = 'result-box';
   const t0 = Date.now();
   try {
+    const extraHeaders = _testApiKey ? { Authorization: 'Bearer ' + _testApiKey } : {};
     const resp = await api('/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Hello! Are you working?' }], stream: false }),
+      headers: extraHeaders,
     });
     const elapsed = Date.now() - t0;
     if (resp.status === 401) {
-      // Chat requires an API key configured in the client — session cookie does not grant access.
-      // Show an inline message rather than triggering the login overlay.
+      // Session cookie does not grant /v1/chat/completions — show an inline key entry form.
+      const msg = (_testApiKey && _apiKeySet)
+        ? 'API key incorrect. Try a different key.'
+        : 'Test chat requires the API key.';
       box.className = 'result-box visible';
-      box.innerHTML = `<div class="result-bubble">
-        <span class="result-role" style="color:var(--txt-m)">info</span>
-        <p class="result-text">Test chat requires the API key — configure it in your API client.</p>
-      </div>`;
+      box.innerHTML = _apiKeySet
+        ? `<div class="result-bubble">
+            <span class="result-role" style="color:var(--txt-m)">info</span>
+            <p class="result-text" style="margin-bottom:10px">${msg}</p>
+            <div class="tc-key-row">
+              <input id="tc-apikey" type="password" class="tc-key-input" placeholder="Enter API key…" autocomplete="off"
+                     onkeydown="if(event.key==='Enter')applyTestKey()">
+              <button class="tc-key-btn" onclick="applyTestKey()">Apply &amp; Run</button>
+            </div>
+          </div>`
+        : `<div class="result-bubble">
+            <span class="result-role" style="color:var(--txt-m)">info</span>
+            <p class="result-text">Test chat requires an API key — set <code>API_KEY</code> in your .env.</p>
+          </div>`;
+      if (_apiKeySet) setTimeout(() => document.getElementById('tc-apikey')?.focus(), 60);
       btn.className = 'btn-run';
       btn.innerHTML = ICON.play + 'Run Test';
       btn.disabled = false;
@@ -448,6 +465,15 @@ async function runTest() {
     btn.disabled = false;
     _testing = false;
   }
+}
+
+function applyTestKey() {
+  const input = document.getElementById('tc-apikey');
+  if (!input) return;
+  const key = input.value.trim();
+  if (!key) { input.focus(); return; }
+  _testApiKey = key;
+  runTest();
 }
 
 /* ── Config ──────────────────────────────────────────────────── */
@@ -512,7 +538,11 @@ async function boot() {
   const cfgResp = await api('/config');
   if (cfgResp.status === 401) { showAuthOverlay(); return; }
   setStatus(cfgResp.ok);
-  if (cfgResp.ok) renderConfig(await cfgResp.json());
+  if (cfgResp.ok) {
+    const cfgData = await cfgResp.json();
+    _apiKeySet = cfgData.API_KEY !== '(not set)';
+    renderConfig(cfgData);
+  }
 
   // 2. Models (needed for selects)
   try {

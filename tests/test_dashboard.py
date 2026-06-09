@@ -8,20 +8,18 @@ from fastapi.testclient import TestClient
 def client(tmp_path, monkeypatch):
     """TestClient with a fresh temp DB and no API key."""
     monkeypatch.setenv("USAGE_DB", str(tmp_path / "test.db"))
-    monkeypatch.delenv("API_KEY", raising=False)
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
-    # Clear sensitive fields so masking tests see "(not set)"
-    for _key in ("TRAE_IDE_TOKEN", "TRAE_MACHINE_ID", "TRAE_DEVICE_ID"):
-        monkeypatch.delenv(_key, raising=False)
-    # Re-import app after env change so lifespan sees the temp DB
+    # Set empty strings BEFORE reload so load_dotenv(override=False) skips .env values.
+    for _key in ("API_KEY", "DASHBOARD_PASSWORD", "TRAE_IDE_TOKEN", "TRAE_MACHINE_ID", "TRAE_DEVICE_ID"):
+        monkeypatch.setenv(_key, "")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
     import config, session_auth, main
-    importlib.reload(config)   # re-reads API_KEY from env
-    # load_dotenv() inside config may restore vars from .env — strip them again
-    for _key in ("API_KEY", "DASHBOARD_PASSWORD", "TRAE_IDE_TOKEN", "TRAE_MACHINE_ID", "TRAE_DEVICE_ID"):
-        monkeypatch.delenv(_key, raising=False)
-    importlib.reload(session_auth)  # resets in-memory rate-limit dict
-    importlib.reload(main)     # picks up new config
+    importlib.reload(config)
+    # Explicitly zero the config attributes in case load_dotenv still read .env.
+    config.API_KEY = ""
+    config.DASHBOARD_PASSWORD = ""
+    importlib.reload(session_auth)
+    importlib.reload(main)
     from main import app
     return TestClient(app)
 
@@ -31,12 +29,14 @@ def authed_client(tmp_path, monkeypatch):
     """TestClient with API_KEY set to 'testkey'."""
     monkeypatch.setenv("USAGE_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("API_KEY", "testkey")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
     import config, session_auth, main
-    importlib.reload(config)   # re-reads API_KEY from env
+    importlib.reload(config)
+    config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
-    importlib.reload(main)     # picks up new config.API_KEY
+    importlib.reload(main)
     from main import app
     return TestClient(app)
 
@@ -46,10 +46,12 @@ def dash_client(tmp_path, monkeypatch):
     """TestClient with DASHBOARD_PASSWORD set; no API_KEY. FAILURE_DELAY zeroed."""
     monkeypatch.setenv("USAGE_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("DASHBOARD_PASSWORD", "testpass")
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
     import config, session_auth, main
     importlib.reload(config)
+    config.API_KEY = ""
     importlib.reload(session_auth)
     monkeypatch.setattr(session_auth, "FAILURE_DELAY", 0)
     importlib.reload(main)
@@ -83,12 +85,17 @@ def test_config_has_all_expected_keys(client):
 
 def test_config_masks_sensitive_fields_when_set(tmp_path, monkeypatch):
     monkeypatch.setenv("USAGE_DB", str(tmp_path / "test.db"))
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
     monkeypatch.setenv("TRAE_IDE_TOKEN", "secret-token")
     monkeypatch.setenv("TRAE_MACHINE_ID", "machine-abc")
     monkeypatch.setenv("TRAE_DEVICE_ID", "device-xyz")
-    import importlib, config, main
+    import importlib, config, session_auth, main
     importlib.reload(config)
+    config.API_KEY = ""
+    config.DASHBOARD_PASSWORD = ""
+    importlib.reload(session_auth)
     importlib.reload(main)
     from main import app
     c = TestClient(app)
@@ -265,10 +272,12 @@ def test_chat_completions_requires_bearer_when_api_key_set(tmp_path, monkeypatch
     """POST /v1/chat/completions: 401 without auth when API_KEY set; open when unset."""
     monkeypatch.setenv("USAGE_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("API_KEY", "testkey")
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
     import config, session_auth, main
     importlib.reload(config)
+    config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
     importlib.reload(main)
     from main import app
@@ -282,8 +291,10 @@ def test_chat_completions_requires_bearer_when_api_key_set(tmp_path, monkeypatch
     assert resp.status_code == 401
 
     # When API_KEY is unset → open (upstream will fail but NOT with 401 from our guard)
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("API_KEY", "")
     importlib.reload(config)
+    config.API_KEY = ""
+    config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
     importlib.reload(main)
     from main import app as app2

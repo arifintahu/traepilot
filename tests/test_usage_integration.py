@@ -45,8 +45,11 @@ async def _fake_stream(*args, **kwargs):
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
     """TestClient with init_db patched out so no usage.db is created."""
+    # Zero auth so tests don't depend on what's in .env
+    monkeypatch.setattr(main_module, "API_KEY", "")
+    monkeypatch.setattr(main_module, "DASHBOARD_PASSWORD", "")
     with patch("main.init_db"), TestClient(main_module.app) as c:
         yield c
 
