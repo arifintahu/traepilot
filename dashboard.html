@@ -53,6 +53,7 @@
     <span id="status-dot" class="dot"></span>
     <span id="status-label" class="foot-label">Connecting…</span>
     <span class="foot-ver">v1.0</span>
+    <button class="btn-logout" onclick="logout()" title="Log out">⎋</button>
   </div>
 </nav>
 
@@ -197,11 +198,11 @@
 <!-- Auth overlay -->
 <div id="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title">
   <div class="auth-box">
-    <div class="auth-title" id="auth-title">API Key Required</div>
-    <div class="auth-sub">This proxy is protected. Enter your API key to continue.</div>
-    <input class="auth-input" id="auth-input" type="password" placeholder="Bearer token…" autocomplete="current-password"
-           onkeydown="if(event.key==='Enter')submitKey()">
-    <button class="auth-btn" onclick="submitKey()">Continue</button>
+    <div class="auth-title" id="auth-title">Dashboard Login</div>
+    <div class="auth-sub">Enter the dashboard password to continue.</div>
+    <input class="auth-input" id="auth-input" type="password" placeholder="Password…" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')submitLogin()">
+    <button class="auth-btn" onclick="submitLogin()">Continue</button>
     <div class="auth-error" id="auth-error" aria-live="polite"></div>
   </div>
 </div>

@@ -32,14 +32,16 @@ function familyOf(id) {
 
 /* ── Config groups ───────────────────────────────────────────── */
 const CONFIG_GROUPS_DEF = [
-  { name: 'Connection', icon: 'link', keys: ['TRAE_BASE_URL','BIND_HOST','BIND_PORT','API_KEY','TRAE_EXCLUDE_MODELS'] },
+  { name: 'Connection', icon: 'link', keys: ['TRAE_BASE_URL','BIND_HOST','BIND_PORT','API_KEY','DASHBOARD_PASSWORD','TRAE_EXCLUDE_MODELS'] },
   { name: 'Device',     icon: 'chip', keys: ['TRAE_DEVICE_BRAND','TRAE_DEVICE_CPU','TRAE_DEVICE_TYPE','TRAE_OS_VERSION','TRAE_DEVICE_ID','TRAE_MACHINE_ID'] },
   { name: 'IDE',        icon: 'box',  keys: ['TRAE_APP_ID','TRAE_IDE_VERSION_CODE','TRAE_IDE_VERSION','TRAE_PLUGIN_CHANNEL','TRAE_IDE_TOKEN'] },
 ];
-const SENSITIVE = new Set(['API_KEY','TRAE_IDE_TOKEN','TRAE_MACHINE_ID','TRAE_DEVICE_ID']);
+const SENSITIVE = new Set(['API_KEY','DASHBOARD_PASSWORD','TRAE_IDE_TOKEN','TRAE_MACHINE_ID','TRAE_DEVICE_ID']);
+
+/* ── One-time migration: remove legacy key storage ───────────── */
+sessionStorage.removeItem('tp_key');
 
 /* ── State ───────────────────────────────────────────────────── */
-let _apiKey    = sessionStorage.getItem('tp_key') || '';
 let _period    = '24h';
 let _models    = [];
 let _dailyData = [];
@@ -52,33 +54,44 @@ let _testing = false;
 const HISTORY_LIMIT = 12;
 
 /* ── Auth ────────────────────────────────────────────────────── */
+// Cookies are sent automatically by the browser on same-origin requests;
+// no manual Authorization header management needed for dashboard users.
 async function api(url, opts = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (_apiKey) headers['Authorization'] = 'Bearer ' + _apiKey;
-  return fetch(url, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  return fetch(url, { ...opts, headers });
 }
 function showAuthOverlay() {
   document.getElementById('auth-overlay').classList.add('visible');
   setTimeout(() => document.getElementById('auth-input').focus(), 60);
 }
 function hideAuthOverlay() { document.getElementById('auth-overlay').classList.remove('visible'); }
-async function submitKey() {
-  const key = document.getElementById('auth-input').value.trim();
+async function submitLogin() {
+  const password = document.getElementById('auth-input').value;
   const err = document.getElementById('auth-error');
   err.textContent = '';
-  if (!key) { err.textContent = 'Please enter a key.'; return; }
-  _apiKey = key;
-  const resp = await fetch('/config', { headers: { Authorization: 'Bearer ' + key } });
-  if (resp.ok) {
-    sessionStorage.setItem('tp_key', key);
+  if (!password) { err.textContent = 'Please enter a password.'; return; }
+  const resp = await fetch('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (resp.status === 204) {
     hideAuthOverlay();
     boot();
+  } else if (resp.status === 429) {
+    const retryAfter = resp.headers.get('Retry-After');
+    err.textContent = retryAfter
+      ? `Too many attempts. Try again in ${retryAfter}s.`
+      : 'Too many attempts. Try again later.';
   } else {
-    _apiKey = '';
-    err.textContent = 'Invalid key. Try again.';
+    err.textContent = 'Wrong password. Try again.';
     document.getElementById('auth-input').value = '';
     document.getElementById('auth-input').focus();
   }
+}
+async function logout() {
+  await fetch('/auth/logout', { method: 'POST' });
+  location.reload();
 }
 
 /* ── Status dot ──────────────────────────────────────────────── */
@@ -390,6 +403,20 @@ async function runTest() {
       body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Hello! Are you working?' }], stream: false }),
     });
     const elapsed = Date.now() - t0;
+    if (resp.status === 401) {
+      // Chat requires an API key configured in the client — session cookie does not grant access.
+      // Show an inline message rather than triggering the login overlay.
+      box.className = 'result-box visible';
+      box.innerHTML = `<div class="result-bubble">
+        <span class="result-role" style="color:var(--txt-m)">info</span>
+        <p class="result-text">Test chat requires the API key — configure it in your API client.</p>
+      </div>`;
+      btn.className = 'btn-run';
+      btn.innerHTML = ICON.play + 'Run Test';
+      btn.disabled = false;
+      _testing = false;
+      return;
+    }
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
       throw new Error(err.detail || JSON.stringify(err));
