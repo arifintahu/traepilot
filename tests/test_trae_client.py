@@ -284,3 +284,29 @@ async def test_non_stream_completion_plain_text_unchanged():
     choice = result['choices'][0]
     assert choice['finish_reason'] == 'stop'
     assert 'sunny' in choice['message']['content']
+
+
+# ── stream_completion with tools ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_stream_completion_emits_tool_call_chunk():
+    from trae_client import stream_completion
+    tool_call_json = '{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\\"city\\":\\"NY\\"}"}}]}'
+
+    async def fake_events(messages, model):
+        yield 'output', {'response': tool_call_json, 'reasoning_content': ''}
+        yield 'done', {'finish_reason': 'stop'}
+
+    tools = [{'type': 'function', 'function': {'name': 'get_weather', 'parameters': {}}}]
+    chunks = []
+    with patch('trae_client._trae_chat_events', fake_events):
+        async for chunk in stream_completion([{'role': 'user', 'content': 'weather?'}], 'gpt-4o', tools=tools):
+            chunks.append(chunk)
+
+    assert chunks[-1] == '[DONE]'
+    data_chunks = [c for c in chunks if c.startswith('data:') and '[DONE]' not in c]
+    assert len(data_chunks) == 1
+    payload = json.loads(data_chunks[0][6:])
+    choice = payload['choices'][0]
+    assert choice['finish_reason'] == 'tool_calls'
+    assert choice['delta']['tool_calls'][0]['function']['name'] == 'get_weather'

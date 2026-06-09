@@ -195,11 +195,45 @@ def _prepare_messages(messages: list, tools: list | None, tool_choice) -> list:
     return [{"role": "system", "content": sys_content}] + converted
 
 
-async def stream_completion(messages: list, model: str, max_tokens: int | None = None):
+async def stream_completion(
+    messages: list, model: str, max_tokens: int | None = None,
+    tools: list | None = None, tool_choice=None,
+):
+    prep = _prepare_messages(messages, tools, tool_choice)
+
+    if tools:
+        # Buffer full response — needed to detect if output is a tool call
+        content, reasoning, finish_reason = "", "", "stop"
+        async for event, data in _trae_chat_events(prep, model):
+            if event == "output":
+                content += data.get("response") or ""
+                reasoning += data.get("reasoning_content") or ""
+            elif event == "done":
+                finish_reason = data.get("finish_reason") or "stop"
+        created = int(time.time())
+        cid = f"chatcmpl-{created}"
+        tool_calls = _parse_tool_call_response(content)
+        if tool_calls:
+            chunk = {
+                "id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": None, "tool_calls": tool_calls}, "finish_reason": "tool_calls"}],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+        else:
+            full = f"<think>\n{reasoning}\n</think>\n\n{content}" if reasoning else content
+            chunk = {
+                "id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
+                "choices": [{"index": 0, "delta": {"content": full}, "finish_reason": finish_reason}],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+        yield "[DONE]"
+        return
+
+    # Original streaming path (no tools)
     think_open = [False]
     created = int(time.time())
     cid = f"chatcmpl-{created}"
-    async for event, data in _trae_chat_events(messages, model):
+    async for event, data in _trae_chat_events(prep, model):
         if event == "output":
             delta = _delta(data.get("reasoning_content") or "", data.get("response") or "", think_open)
             if delta:
