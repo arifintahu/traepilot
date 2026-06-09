@@ -4,7 +4,7 @@
 
 Point Cherry Studio, Cline, Continue, or any OpenAI client at `http://127.0.0.1:8787/v1` and chat with Trae's models — no API key required, no extra cost.
 
-> ⚠️ **Personal use only.** Binds to `127.0.0.1` — never expose publicly.
+> ⚠️ **Binds to `127.0.0.1` by default.** To host publicly, set `API_KEY` and `DASHBOARD_PASSWORD` and put it behind an HTTPS reverse proxy. See [Public hosting](#public-hosting).
 
 ---
 
@@ -67,7 +67,7 @@ Point any OpenAI-compatible client at:
 
 ```
 Base URL:  http://127.0.0.1:8787/v1
-API Key:   (leave empty, or set API_KEY in .env for local auth)
+API Key:   (leave empty if API_KEY is not set; otherwise use the value from your .env)
 ```
 
 | Client | Where to set it |
@@ -186,7 +186,18 @@ Five sections via the sidebar:
 | **Test Chat** | Send `"Hello! Are you working?"` to any model you select. Shows the raw response, model, and latency. |
 | **Config** | All env vars grouped into Connection / Device / IDE. Sensitive values (`API_KEY`, `TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, `TRAE_DEVICE_ID`) are masked server-side — the real value is never sent to the browser. |
 
-> 💡 If `API_KEY` is set in `.env`, the dashboard shows a key prompt on load and stores it in `sessionStorage` for the tab's lifetime.
+> 💡 If `DASHBOARD_PASSWORD` is set, the dashboard shows a password login form. On success the server sets a signed HttpOnly session cookie valid for 7 days. The password is never stored in the browser — only the cookie.
+
+### Public hosting
+
+To host TraePilot publicly:
+1. Put it behind an HTTPS reverse proxy (nginx, Caddy, etc.).
+2. Set both `API_KEY` (for programmatic clients) and `DASHBOARD_PASSWORD` (for the web dashboard) in your `.env`.
+3. If neither is set and the proxy is bound to a non-local interface, TraePilot will print a warning at startup.
+
+**Behavior changes when vars are set:**
+- Setting `DASHBOARD_PASSWORD` alone locks `/usage/*` and `/config` — a session cookie or Bearer key is required.
+- Setting `API_KEY` locks `/v1/chat/completions` — clients without the key get 401. Session cookies do **not** grant chat access.
 
 ---
 
@@ -263,7 +274,10 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 | `TRAE_APP_ID` | required | App ID |
 | `BIND_HOST` | `127.0.0.1` | Bind address — do not change |
 | `BIND_PORT` | `8787` | Port |
-| `API_KEY` | _(empty)_ | Optional: require Bearer auth on all endpoints |
+| `API_KEY` | _(empty)_ | Optional: require Bearer auth on programmatic endpoints |
+| `DASHBOARD_PASSWORD` | _(empty)_ | Optional: password for the web dashboard; sets a 7-day HttpOnly session cookie |
+| `SESSION_SECRET` | _(empty)_ | Optional: persistent cookie-signing secret; if unset a random one is generated at startup (sessions invalidated on restart) |
+| `SESSION_MAX_AGE` | `604800` | Session cookie lifetime in seconds (default 7 days) |
 | `TRAE_EXCLUDE_MODELS` | `claude3.5,aws_sdk_claude37_sonnet` | Comma-separated model IDs to hide from `/v1/models` |
 | `USAGE_DB` | `usage.db` | Path to usage tracking database |
 
@@ -273,16 +287,18 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/v1/models` | GET | optional | List available models with capability tags |
-| `/v1/chat/completions` | POST | optional | Chat — streaming, non-streaming, and tool calls |
-| `/usage/stats` | GET | optional | Aggregate token/request counts |
-| `/usage/history` | GET | optional | Paginated request log |
-| `/usage/daily` | GET | optional | Daily rollup |
-| `/config` | GET | optional | All env config (sensitive fields masked) |
+| `/v1/models` | GET | open | List available models with capability tags |
+| `/v1/chat/completions` | POST | API key (if set) | Chat — streaming, non-streaming, and tool calls |
+| `/usage/stats` | GET | API key or session | Aggregate token/request counts |
+| `/usage/history` | GET | API key or session | Paginated request log |
+| `/usage/daily` | GET | API key or session | Daily rollup |
+| `/config` | GET | API key or session | All env config (sensitive fields masked) |
+| `/auth/login` | POST | — | Exchange dashboard password for a session cookie |
+| `/auth/logout` | POST | — | Clear the session cookie |
 | `/dashboard` | GET | — | Web dashboard (HTML) |
 | `/health` | GET | — | `{"status":"ok"}` |
 
-"Optional" auth means the endpoint is open unless `API_KEY` is set in `.env`.
+"API key or session" means the endpoint is open when neither `API_KEY` nor `DASHBOARD_PASSWORD` is set; otherwise requires a valid Bearer token or dashboard session cookie.
 
 ---
 
@@ -291,6 +307,9 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 ```bash
 # Health check
 curl http://127.0.0.1:8787/health
+
+# If API_KEY is set, include it as a Bearer token
+# curl ... -H "Authorization: Bearer your-api-key"
 
 # List models (includes capabilities field)
 curl http://127.0.0.1:8787/v1/models

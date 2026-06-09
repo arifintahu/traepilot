@@ -32,16 +32,22 @@ function familyOf(id) {
 
 /* ── Config groups ───────────────────────────────────────────── */
 const CONFIG_GROUPS_DEF = [
-  { name: 'Connection', icon: 'link', keys: ['TRAE_BASE_URL','BIND_HOST','BIND_PORT','API_KEY','TRAE_EXCLUDE_MODELS'] },
+  { name: 'Connection', icon: 'link', keys: ['TRAE_BASE_URL','BIND_HOST','BIND_PORT','API_KEY','DASHBOARD_PASSWORD','TRAE_EXCLUDE_MODELS'] },
   { name: 'Device',     icon: 'chip', keys: ['TRAE_DEVICE_BRAND','TRAE_DEVICE_CPU','TRAE_DEVICE_TYPE','TRAE_OS_VERSION','TRAE_DEVICE_ID','TRAE_MACHINE_ID'] },
   { name: 'IDE',        icon: 'box',  keys: ['TRAE_APP_ID','TRAE_IDE_VERSION_CODE','TRAE_IDE_VERSION','TRAE_PLUGIN_CHANNEL','TRAE_IDE_TOKEN'] },
 ];
-const SENSITIVE = new Set(['API_KEY','TRAE_IDE_TOKEN','TRAE_MACHINE_ID','TRAE_DEVICE_ID']);
+const SENSITIVE = new Set(['API_KEY','DASHBOARD_PASSWORD','TRAE_IDE_TOKEN','TRAE_MACHINE_ID','TRAE_DEVICE_ID']);
+
+/* ── One-time migration: remove legacy key storage ───────────── */
+sessionStorage.removeItem('tp_key');
 
 /* ── State ───────────────────────────────────────────────────── */
-let _apiKey    = sessionStorage.getItem('tp_key') || '';
 let _period    = '24h';
 let _models    = [];
+let _apiKeySet  = false;  // true when /config reports API_KEY is configured
+let _testApiKey = '';     // Bearer token entered by the user for test chat (in-memory only)
+let _refreshTimer = null;
+const REFRESH_INTERVAL = 5000;
 let _dailyData = [];
 let _allHistory = [];
 let _historyOffset = 0;
@@ -52,33 +58,44 @@ let _testing = false;
 const HISTORY_LIMIT = 12;
 
 /* ── Auth ────────────────────────────────────────────────────── */
+// Cookies are sent automatically by the browser on same-origin requests;
+// no manual Authorization header management needed for dashboard users.
 async function api(url, opts = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (_apiKey) headers['Authorization'] = 'Bearer ' + _apiKey;
-  return fetch(url, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  return fetch(url, { ...opts, headers });
 }
 function showAuthOverlay() {
   document.getElementById('auth-overlay').classList.add('visible');
   setTimeout(() => document.getElementById('auth-input').focus(), 60);
 }
 function hideAuthOverlay() { document.getElementById('auth-overlay').classList.remove('visible'); }
-async function submitKey() {
-  const key = document.getElementById('auth-input').value.trim();
+async function submitLogin() {
+  const password = document.getElementById('auth-input').value;
   const err = document.getElementById('auth-error');
   err.textContent = '';
-  if (!key) { err.textContent = 'Please enter a key.'; return; }
-  _apiKey = key;
-  const resp = await fetch('/config', { headers: { Authorization: 'Bearer ' + key } });
-  if (resp.ok) {
-    sessionStorage.setItem('tp_key', key);
+  if (!password) { err.textContent = 'Please enter a password.'; return; }
+  const resp = await fetch('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (resp.status === 204) {
     hideAuthOverlay();
     boot();
+  } else if (resp.status === 429) {
+    const retryAfter = resp.headers.get('Retry-After');
+    err.textContent = retryAfter
+      ? `Too many attempts. Try again in ${retryAfter}s.`
+      : 'Too many attempts. Try again later.';
   } else {
-    _apiKey = '';
-    err.textContent = 'Invalid key. Try again.';
+    err.textContent = 'Wrong password. Try again.';
     document.getElementById('auth-input').value = '';
     document.getElementById('auth-input').focus();
   }
+}
+async function logout() {
+  await fetch('/auth/logout', { method: 'POST' });
+  location.reload();
 }
 
 /* ── Status dot ──────────────────────────────────────────────── */
@@ -122,9 +139,13 @@ function showSection(name) {
   document.getElementById('page-title').textContent = title;
   document.getElementById('page-subtitle').textContent = sub;
   document.getElementById('period-tabs').style.display = name === 'usage' ? 'inline-flex' : 'none';
+  const liveSection = name === 'usage' || name === 'history';
   document.getElementById('topbar-action').innerHTML = name === 'models'
-    ? `<button class="btn-ghost" onclick="refreshModels(this)">${ICON.refresh}Refresh</button>` : '';
+    ? `<button class="btn-ghost" onclick="refreshModels(this)">${ICON.refresh}Refresh</button>`
+    : liveSection
+    ? `<span class="live-badge"><span class="live-dot"></span>Live</span>` : '';
   if (name === 'history') { _historyOffset = 0; renderHistory(); }
+  if (liveSection) startAutoRefresh(); else stopAutoRefresh();
 }
 
 /* ── Period ──────────────────────────────────────────────────── */
@@ -136,6 +157,37 @@ function setPeriod(p) {
     t.setAttribute('aria-selected', String(a));
   });
   renderUsage();
+}
+
+/* ── Auto-refresh ────────────────────────────────────────────── */
+function _activeSection() {
+  const el = document.querySelector('.section.active');
+  return el ? el.id.replace('section-', '') : null;
+}
+
+async function _doRefresh() {
+  const s = _activeSection();
+  if (s === 'usage') {
+    try {
+      const r = await api('/usage/daily?days=7');
+      if (r.ok) {
+        const d = await r.json();
+        _dailyData = (d.items || []).sort((a, b) => a.date < b.date ? -1 : 1).slice(-7);
+      }
+    } catch {}
+    await renderUsage();
+  } else if (s === 'history') {
+    await loadHistory();
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  _refreshTimer = setInterval(_doRefresh, REFRESH_INTERVAL);
+}
+
+function stopAutoRefresh() {
+  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
 }
 
 /* ── Sparklines ──────────────────────────────────────────────── */
@@ -385,11 +437,40 @@ async function runTest() {
   box.className = 'result-box';
   const t0 = Date.now();
   try {
+    const extraHeaders = _testApiKey ? { Authorization: 'Bearer ' + _testApiKey } : {};
     const resp = await api('/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Hello! Are you working?' }], stream: false }),
+      headers: extraHeaders,
     });
     const elapsed = Date.now() - t0;
+    if (resp.status === 401) {
+      // Session cookie does not grant /v1/chat/completions — show an inline key entry form.
+      const msg = (_testApiKey && _apiKeySet)
+        ? 'API key incorrect. Try a different key.'
+        : 'Test chat requires the API key.';
+      box.className = 'result-box visible';
+      box.innerHTML = _apiKeySet
+        ? `<div class="result-bubble">
+            <span class="result-role" style="color:var(--txt-m)">info</span>
+            <p class="result-text" style="margin-bottom:10px">${msg}</p>
+            <div class="tc-key-row">
+              <input id="tc-apikey" type="password" class="tc-key-input" placeholder="Enter API key…" autocomplete="off"
+                     onkeydown="if(event.key==='Enter')applyTestKey()">
+              <button class="tc-key-btn" onclick="applyTestKey()">Apply &amp; Run</button>
+            </div>
+          </div>`
+        : `<div class="result-bubble">
+            <span class="result-role" style="color:var(--txt-m)">info</span>
+            <p class="result-text">Test chat requires an API key — set <code>API_KEY</code> in your .env.</p>
+          </div>`;
+      if (_apiKeySet) setTimeout(() => document.getElementById('tc-apikey')?.focus(), 60);
+      btn.className = 'btn-run';
+      btn.innerHTML = ICON.play + 'Run Test';
+      btn.disabled = false;
+      _testing = false;
+      return;
+    }
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
       throw new Error(err.detail || JSON.stringify(err));
@@ -421,6 +502,15 @@ async function runTest() {
     btn.disabled = false;
     _testing = false;
   }
+}
+
+function applyTestKey() {
+  const input = document.getElementById('tc-apikey');
+  if (!input) return;
+  const key = input.value.trim();
+  if (!key) { input.focus(); return; }
+  _testApiKey = key;
+  runTest();
 }
 
 /* ── Config ──────────────────────────────────────────────────── */
@@ -485,7 +575,11 @@ async function boot() {
   const cfgResp = await api('/config');
   if (cfgResp.status === 401) { showAuthOverlay(); return; }
   setStatus(cfgResp.ok);
-  if (cfgResp.ok) renderConfig(await cfgResp.json());
+  if (cfgResp.ok) {
+    const cfgData = await cfgResp.json();
+    _apiKeySet = cfgData.API_KEY !== '(not set)';
+    renderConfig(cfgData);
+  }
 
   // 2. Models (needed for selects)
   try {
@@ -514,5 +608,11 @@ async function boot() {
   renderUsage();
   showSection('usage');
 }
+
+document.addEventListener('visibilitychange', () => {
+  const s = _activeSection();
+  if (document.hidden) stopAutoRefresh();
+  else if (s === 'usage' || s === 'history') startAutoRefresh();
+});
 
 document.addEventListener('DOMContentLoaded', boot);

@@ -1,4 +1,6 @@
 import os
+import hashlib
+import secrets
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,6 +9,10 @@ TRAE_BASE_URL = os.getenv("TRAE_BASE_URL", "https://coresg-normal.trae.ai")
 BIND_HOST = os.getenv("BIND_HOST", "127.0.0.1")
 BIND_PORT = int(os.getenv("BIND_PORT", "8080"))
 API_KEY = os.getenv("API_KEY", "")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
+SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(7 * 24 * 3600)))
+_session_secret = os.getenv("SESSION_SECRET", "") or secrets.token_hex(32)
+SESSION_SIGNING_KEY = hashlib.sha256((_session_secret + DASHBOARD_PASSWORD).encode()).digest()
 
 # Model ids to hide from /v1/models (comma-separated). Defaults to the Claude ids
 # that return 4023 on accounts without Claude access.
