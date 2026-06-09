@@ -67,19 +67,22 @@ async def chat_completions(req: ChatCompletionRequest):
             accumulated = []
             status = "ok"
             try:
-                async for chunk in stream_completion(messages, req.model, req.max_tokens):
+                async for chunk in stream_completion(
+                    messages, req.model, req.max_tokens,
+                    tools=req.tools, tool_choice=req.tool_choice,
+                ):
                     if chunk == "[DONE]":
                         yield "data: [DONE]\n\n"
                         break
                     yield chunk
                     try:
-                        delta = json.loads(chunk[6:])["choices"][0]["delta"].get("content", "")
-                        if delta:
-                            accumulated.append(delta)
+                        delta = json.loads(chunk[6:])["choices"][0]["delta"]
+                        text = delta.get("content") or ""
+                        if text:
+                            accumulated.append(text)
                     except Exception:
                         pass
                 else:
-                    # loop exhausted without [DONE] — upstream closed connection early
                     status = "error"
             except Exception as e:
                 status = "error"
@@ -92,12 +95,15 @@ async def chat_completions(req: ChatCompletionRequest):
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     try:
-        result = await non_stream_completion(messages, req.model, req.max_tokens)
+        result = await non_stream_completion(
+            messages, req.model, req.max_tokens,
+            tools=req.tools, tool_choice=req.tool_choice,
+        )
     except Exception as e:
         await record_usage(req.model, messages, "", "error", False)
         raise HTTPException(status_code=502, detail=str(e))
 
-    output_text = result["choices"][0]["message"]["content"]
+    output_text = result["choices"][0]["message"].get("content") or ""
     await record_usage(req.model, messages, output_text, "ok", False)
     return JSONResponse(result)
 
