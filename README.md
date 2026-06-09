@@ -4,7 +4,7 @@
 
 Point Cherry Studio, Cline, Continue, or any OpenAI client at `http://127.0.0.1:8787/v1` and chat with Trae's models — no API key required, no extra cost.
 
-> ⚠️ **Personal use only.** Binds to `127.0.0.1` — never expose publicly.
+> ⚠️ **Binds to `127.0.0.1` by default.** To host publicly, set `API_KEY` and `DASHBOARD_PASSWORD` and put it behind an HTTPS reverse proxy. See [Public hosting](#public-hosting).
 
 ---
 
@@ -67,7 +67,7 @@ Point any OpenAI-compatible client at:
 
 ```
 Base URL:  http://127.0.0.1:8787/v1
-API Key:   (leave empty, or set API_KEY in .env for local auth)
+API Key:   (leave empty if API_KEY is not set; otherwise use the value from your .env)
 ```
 
 | Client | Where to set it |
@@ -307,6 +307,9 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 ```bash
 # Health check
 curl http://127.0.0.1:8787/health
+
+# If API_KEY is set, include it as a Bearer token
+# curl ... -H "Authorization: Bearer your-api-key"
 
 # List models (includes capabilities field)
 curl http://127.0.0.1:8787/v1/models
