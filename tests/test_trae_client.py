@@ -248,3 +248,39 @@ def test_prepare_messages_merges_with_existing_system():
     assert out[0]['role'] == 'system'
     assert 'Be helpful.' in out[0]['content']
     assert 'fn' in out[0]['content']
+
+
+# ── non_stream_completion with tools ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_non_stream_completion_returns_tool_calls_when_detected():
+    from trae_client import non_stream_completion
+    tool_call_json = '{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\\"city\\":\\"NY\\"}"}}]}'
+
+    async def fake_events(messages, model):
+        yield 'output', {'response': tool_call_json, 'reasoning_content': ''}
+        yield 'done', {'finish_reason': 'stop'}
+
+    tools = [{'type': 'function', 'function': {'name': 'get_weather', 'parameters': {}}}]
+    with patch('trae_client._trae_chat_events', fake_events):
+        result = await non_stream_completion([{'role': 'user', 'content': 'weather?'}], 'gpt-4o', tools=tools)
+    choice = result['choices'][0]
+    assert choice['finish_reason'] == 'tool_calls'
+    assert choice['message']['tool_calls'][0]['function']['name'] == 'get_weather'
+    assert choice['message']['content'] is None
+
+
+@pytest.mark.asyncio
+async def test_non_stream_completion_plain_text_unchanged():
+    from trae_client import non_stream_completion
+
+    async def fake_events(messages, model):
+        yield 'output', {'response': 'The weather is sunny.', 'reasoning_content': ''}
+        yield 'done', {'finish_reason': 'stop'}
+
+    tools = [{'type': 'function', 'function': {'name': 'get_weather', 'parameters': {}}}]
+    with patch('trae_client._trae_chat_events', fake_events):
+        result = await non_stream_completion([{'role': 'user', 'content': 'weather?'}], 'gpt-4o', tools=tools)
+    choice = result['choices'][0]
+    assert choice['finish_reason'] == 'stop'
+    assert 'sunny' in choice['message']['content']

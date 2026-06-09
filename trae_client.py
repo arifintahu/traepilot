@@ -220,9 +220,13 @@ async def stream_completion(messages: list, model: str, max_tokens: int | None =
             return
 
 
-async def non_stream_completion(messages: list, model: str, max_tokens: int | None = None) -> dict:
+async def non_stream_completion(
+    messages: list, model: str, max_tokens: int | None = None,
+    tools: list | None = None, tool_choice=None,
+) -> dict:
+    prep = _prepare_messages(messages, tools, tool_choice)
     content, reasoning, finish_reason = "", "", "stop"
-    async for event, data in _trae_chat_events(messages, model):
+    async for event, data in _trae_chat_events(prep, model):
         if event == "output":
             content += data.get("response") or ""
             reasoning += data.get("reasoning_content") or ""
@@ -231,14 +235,22 @@ async def non_stream_completion(messages: list, model: str, max_tokens: int | No
         elif event == "done":
             if data.get("finish_reason"):
                 finish_reason = data["finish_reason"]
-    full = f"<think>\n{reasoning}\n</think>\n\n{content}" if reasoning else content
+
     created = int(time.time())
+    cid = f"chatcmpl-{created}"
+
+    tool_calls = _parse_tool_call_response(content) if tools else None
+    if tool_calls:
+        return {
+            "id": cid, "object": "chat.completion", "created": created, "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": tool_calls}, "finish_reason": "tool_calls"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    full = f"<think>\n{reasoning}\n</think>\n\n{content}" if reasoning else content
     return {
-        "id": f"chatcmpl-{created}", "object": "chat.completion", "created": created,
-        "model": model,
-        "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": full}, "finish_reason": finish_reason}
-        ],
+        "id": cid, "object": "chat.completion", "created": created, "model": model,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": full}, "finish_reason": finish_reason}],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
 
