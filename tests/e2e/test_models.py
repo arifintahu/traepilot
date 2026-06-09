@@ -89,8 +89,9 @@ async def test_streaming(async_client: httpx.AsyncClient, model_id: str):
         "stream": True,
         "messages": [{"role": "user", "content": "Say hi in one word."}],
     }) as resp:
-        assert resp.status_code == 200, await resp.aread()
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
         chunks = []
+        bad_lines: list = []
         got_done = False
         async for line in resp.aiter_lines():
             line = line.strip()
@@ -102,9 +103,10 @@ async def test_streaming(async_client: httpx.AsyncClient, model_id: str):
             if line.startswith("data: "):
                 try:
                     chunks.append(json.loads(line[6:]))
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as _json_err:
+                    bad_lines.append((line, str(_json_err)))
 
+    assert not bad_lines, f"Malformed SSE data lines: {bad_lines}"
     assert got_done, "SSE stream did not end with [DONE]"
     content_chunks = [
         c for c in chunks
@@ -155,6 +157,11 @@ async def test_tool_call(async_client: httpx.AsyncClient, model_id: str):
     assert tool_calls and len(tool_calls) > 0, "Expected non-empty tool_calls list"
     assert tool_calls[0]["function"]["name"] == "get_weather", \
         f"Expected function name 'get_weather', got {tool_calls[0]['function']['name']!r}"
+    try:
+        args = json.loads(tool_calls[0]["function"]["arguments"])
+    except (json.JSONDecodeError, TypeError) as _e:
+        pytest.fail(f"tool_calls[0].function.arguments is not valid JSON: {_e!r}")
+    assert "city" in args, f"Expected 'city' in arguments, got {args!r}"
 
 
 @pytest.mark.e2e
@@ -173,4 +180,4 @@ async def test_reasoning(async_client: httpx.AsyncClient, model_id: str):
     body = resp.json()
     content = body["choices"][0]["message"]["content"] or ""
     assert "<think>" in content, \
-        f"Expected <think> block in reasoning model output, got: {content[:200]!r}"
+        f"Expected <think> block in reasoning model output, got: {content[:100]!r}...{content[-100:]!r}"
