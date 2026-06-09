@@ -88,6 +88,9 @@ body{
 .btn-ghost:hover{background:var(--raised);color:var(--txt-1);border-color:rgba(255,255,255,.18)}
 .btn-ghost.spinning svg{animation:spin .65s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.live-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--green)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:livepulse 2s ease-in-out infinite;flex-shrink:0}
+@keyframes livepulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
 
 /* ── Sections ────────────────────────────────────────────────── */
 .section{display:none;animation:fade .35s ease}

@@ -46,6 +46,8 @@ let _period    = '24h';
 let _models    = [];
 let _apiKeySet  = false;  // true when /config reports API_KEY is configured
 let _testApiKey = '';     // Bearer token entered by the user for test chat (in-memory only)
+let _refreshTimer = null;
+const REFRESH_INTERVAL = 5000;
 let _dailyData = [];
 let _allHistory = [];
 let _historyOffset = 0;
@@ -137,9 +139,13 @@ function showSection(name) {
   document.getElementById('page-title').textContent = title;
   document.getElementById('page-subtitle').textContent = sub;
   document.getElementById('period-tabs').style.display = name === 'usage' ? 'inline-flex' : 'none';
+  const liveSection = name === 'usage' || name === 'history';
   document.getElementById('topbar-action').innerHTML = name === 'models'
-    ? `<button class="btn-ghost" onclick="refreshModels(this)">${ICON.refresh}Refresh</button>` : '';
+    ? `<button class="btn-ghost" onclick="refreshModels(this)">${ICON.refresh}Refresh</button>`
+    : liveSection
+    ? `<span class="live-badge"><span class="live-dot"></span>Live</span>` : '';
   if (name === 'history') { _historyOffset = 0; renderHistory(); }
+  if (liveSection) startAutoRefresh(); else stopAutoRefresh();
 }
 
 /* ── Period ──────────────────────────────────────────────────── */
@@ -151,6 +157,37 @@ function setPeriod(p) {
     t.setAttribute('aria-selected', String(a));
   });
   renderUsage();
+}
+
+/* ── Auto-refresh ────────────────────────────────────────────── */
+function _activeSection() {
+  const el = document.querySelector('.section.active');
+  return el ? el.id.replace('section-', '') : null;
+}
+
+async function _doRefresh() {
+  const s = _activeSection();
+  if (s === 'usage') {
+    try {
+      const r = await api('/usage/daily?days=7');
+      if (r.ok) {
+        const d = await r.json();
+        _dailyData = (d.items || []).sort((a, b) => a.date < b.date ? -1 : 1).slice(-7);
+      }
+    } catch {}
+    await renderUsage();
+  } else if (s === 'history') {
+    await loadHistory();
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  _refreshTimer = setInterval(_doRefresh, REFRESH_INTERVAL);
+}
+
+function stopAutoRefresh() {
+  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
 }
 
 /* ── Sparklines ──────────────────────────────────────────────── */
@@ -571,5 +608,11 @@ async function boot() {
   renderUsage();
   showSection('usage');
 }
+
+document.addEventListener('visibilitychange', () => {
+  const s = _activeSection();
+  if (document.hidden) stopAutoRefresh();
+  else if (s === 'usage' || s === 'history') startAutoRefresh();
+});
 
 document.addEventListener('DOMContentLoaded', boot);
