@@ -327,7 +327,7 @@ function renderModels() {
     grid.innerHTML = '<div style="color:var(--txt-m);padding:20px">No models available.</div>';
     return;
   }
-  const CAP_LABEL = { tools: '⚙ tools', streaming: '⚡ stream', vision: '👁 vision', reasoning: '🧠 reasoning' };
+  const CAP_LABEL = { tools: '⚙ tools', streaming: '⚡ stream', reasoning: '🧠 reasoning' };
   grid.innerHTML = _models.map(m => {
     const fam = FAMILY[familyOf(m.id)] || FAMILY.Other;
     const caps = (m.capabilities || [])
