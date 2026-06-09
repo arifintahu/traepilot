@@ -191,6 +191,8 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--txt
 .btn-copy svg{width:14px;height:14px}
 .btn-copy:hover{background:var(--raised);color:var(--txt-1)}
 .btn-copy.copied{color:var(--green);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.1)}
+.cap-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:-2px}
+.cap-chip{font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--txt-m);white-space:nowrap}
 
 /* ── Test chat ───────────────────────────────────────────────── */
 .test-wrap{max-width:560px}

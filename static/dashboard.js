@@ -327,8 +327,12 @@ function renderModels() {
     grid.innerHTML = '<div style="color:var(--txt-m);padding:20px">No models available.</div>';
     return;
   }
+  const CAP_LABEL = { tools: '⚙ tools', streaming: '⚡ stream', vision: '👁 vision', reasoning: '🧠 reasoning' };
   grid.innerHTML = _models.map(m => {
     const fam = FAMILY[familyOf(m.id)] || FAMILY.Other;
+    const caps = (m.capabilities || [])
+      .map(c => CAP_LABEL[c] ? `<span class="cap-chip">${CAP_LABEL[c]}</span>` : '')
+      .join('');
     return `<div class="model-card">
       <div class="model-head">
         <span class="model-avatar" style="background:${fam.color}1a;color:${fam.color};border-color:${fam.color}40">${fam.glyph}</span>
@@ -336,6 +340,7 @@ function renderModels() {
       </div>
       <div class="model-id mono">${esc(m.id)}</div>
       <div class="model-owner">owned by <b>${esc(m.owned_by || 'trae')}</b></div>
+      ${caps ? `<div class="cap-chips">${caps}</div>` : ''}
       <button class="btn-copy" data-id="${esc(m.id)}" onclick="copyModel(this)">${ICON.copy}<span>Copy ID</span></button>
     </div>`;
   }).join('');
