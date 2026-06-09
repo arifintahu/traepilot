@@ -131,3 +131,23 @@ def test_get_capabilities_deepseek_v3():
     caps = _get_capabilities('deepseek-V3')
     assert 'tools' in caps
     assert 'reasoning' not in caps
+
+
+@pytest.mark.asyncio
+async def test_list_models_includes_capabilities():
+    from trae_client import list_models
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {
+        'model_configs': [{'model_name': 'gpt-4o'}, {'model_name': 'unknown-model'}]
+    }
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_resp)
+    with patch('trae_client.httpx.AsyncClient', return_value=mock_client):
+        models = await list_models()
+    gpt = next(m for m in models if m['id'] == 'gpt-4o')
+    assert set(gpt['capabilities']) == {'tools', 'streaming', 'vision'}
+    unknown = next(m for m in models if m['id'] == 'unknown-model')
+    assert unknown['capabilities'] == ['streaming']

@@ -194,5 +194,8 @@ async def list_models() -> list[dict]:
         name = m.get("name") or m.get("model_name") or m.get("id", "")
         if not name or name in EXCLUDE_MODELS:
             continue
-        models.append({"id": name, "object": "model", "created": int(time.time()), "owned_by": "trae"})
+        models.append({
+            "id": name, "object": "model", "created": int(time.time()),
+            "owned_by": "trae", "capabilities": _get_capabilities(name),
+        })
     return models
