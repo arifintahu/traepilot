@@ -114,7 +114,7 @@ async def test_list_models_parsing():
 def test_get_capabilities_exact_match():
     from trae_client import _get_capabilities
     caps = _get_capabilities('gemini-2.5-pro-preview-03-25')
-    assert set(caps) == {'tools', 'streaming', 'vision', 'reasoning'}
+    assert set(caps) == {'tools', 'streaming', 'reasoning'}
 
 def test_get_capabilities_case_insensitive():
     from trae_client import _get_capabilities
@@ -148,7 +148,7 @@ async def test_list_models_includes_capabilities():
     with patch('trae_client.httpx.AsyncClient', return_value=mock_client):
         models = await list_models()
     gpt = next(m for m in models if m['id'] == 'gpt-4o')
-    assert set(gpt['capabilities']) == {'tools', 'streaming', 'vision'}
+    assert set(gpt['capabilities']) == {'tools', 'streaming'}
     unknown = next(m for m in models if m['id'] == 'unknown-model')
     assert unknown['capabilities'] == ['streaming']
 

@@ -12,10 +12,10 @@ CHAT_ENDPOINT = "/api/ide/v1/chat"
 # Exact model IDs → capabilities (matched case-insensitively).
 # New models not in this map default to ["streaming"].
 _CAPABILITIES: dict[str, list[str]] = {
-    "gemini-2.5-pro-preview-03-25": ["tools", "streaming", "vision", "reasoning"],
-    "gemini_2.5_flash":             ["tools", "streaming", "vision", "reasoning"],
-    "gpt-4.1-2025-04-14":           ["tools", "streaming", "vision"],
-    "gpt-4o":                       ["tools", "streaming", "vision"],
+    "gemini-2.5-pro-preview-03-25": ["tools", "streaming", "reasoning"],
+    "gemini_2.5_flash":             ["tools", "streaming", "reasoning"],
+    "gpt-4.1-2025-04-14":           ["tools", "streaming"],
+    "gpt-4o":                       ["tools", "streaming"],
     "deepseek-v3-0324":             ["tools", "streaming"],
     "deepseek-v3":                  ["tools", "streaming"],
     "deepseek-r1":                  ["tools", "streaming", "reasoning"],
