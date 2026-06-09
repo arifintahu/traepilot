@@ -34,7 +34,10 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials | None = None) -> N
 
 class Message(BaseModel):
     role: str
-    content: str
+    content: Optional[str] = None
+    tool_calls: Optional[list] = None
+    tool_call_id: Optional[str] = None
+    name: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -42,6 +45,8 @@ class ChatCompletionRequest(BaseModel):
     messages: list[Message]
     stream: bool = False
     max_tokens: Optional[int] = None
+    tools: Optional[list] = None
+    tool_choice: Optional[str | dict] = None
 
 
 @app.get("/v1/models")
@@ -55,7 +60,7 @@ async def get_models():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(req: ChatCompletionRequest):
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    messages = [m.model_dump(exclude_none=True) for m in req.messages]
 
     if req.stream:
         async def event_stream():
