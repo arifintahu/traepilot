@@ -34,7 +34,10 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials | None = None) -> N
 
 class Message(BaseModel):
     role: str
-    content: str
+    content: Optional[str] = None
+    tool_calls: Optional[list] = None
+    tool_call_id: Optional[str] = None
+    name: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -42,6 +45,8 @@ class ChatCompletionRequest(BaseModel):
     messages: list[Message]
     stream: bool = False
     max_tokens: Optional[int] = None
+    tools: Optional[list] = None
+    tool_choice: Optional[str | dict] = None
 
 
 @app.get("/v1/models")
@@ -55,26 +60,29 @@ async def get_models():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(req: ChatCompletionRequest):
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    messages = [m.model_dump(exclude_none=True) for m in req.messages]
 
     if req.stream:
         async def event_stream():
             accumulated = []
             status = "ok"
             try:
-                async for chunk in stream_completion(messages, req.model, req.max_tokens):
+                async for chunk in stream_completion(
+                    messages, req.model, req.max_tokens,
+                    tools=req.tools, tool_choice=req.tool_choice,
+                ):
                     if chunk == "[DONE]":
                         yield "data: [DONE]\n\n"
                         break
                     yield chunk
                     try:
-                        delta = json.loads(chunk[6:])["choices"][0]["delta"].get("content", "")
-                        if delta:
-                            accumulated.append(delta)
+                        delta = json.loads(chunk[6:])["choices"][0]["delta"]
+                        text = delta.get("content") or ""
+                        if text:
+                            accumulated.append(text)
                     except Exception:
                         pass
                 else:
-                    # loop exhausted without [DONE] — upstream closed connection early
                     status = "error"
             except Exception as e:
                 status = "error"
@@ -87,12 +95,15 @@ async def chat_completions(req: ChatCompletionRequest):
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     try:
-        result = await non_stream_completion(messages, req.model, req.max_tokens)
+        result = await non_stream_completion(
+            messages, req.model, req.max_tokens,
+            tools=req.tools, tool_choice=req.tool_choice,
+        )
     except Exception as e:
         await record_usage(req.model, messages, "", "error", False)
         raise HTTPException(status_code=502, detail=str(e))
 
-    output_text = result["choices"][0]["message"]["content"]
+    output_text = result["choices"][0]["message"].get("content") or ""
     await record_usage(req.model, messages, output_text, "ok", False)
     return JSONResponse(result)
 

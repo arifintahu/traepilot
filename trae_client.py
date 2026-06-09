@@ -9,6 +9,22 @@ from config import TRAE_BASE_URL, TRAE_HEADERS, EXCLUDE_MODELS
 # (archived) trae2api project and verified against the live API.
 CHAT_ENDPOINT = "/api/ide/v1/chat"
 
+# Exact model IDs → capabilities (matched case-insensitively).
+# New models not in this map default to ["streaming"].
+_CAPABILITIES: dict[str, list[str]] = {
+    "gemini-2.5-pro-preview-03-25": ["tools", "streaming", "reasoning"],
+    "gemini_2.5_flash":             ["tools", "streaming", "reasoning"],
+    "gpt-4.1-2025-04-14":           ["tools", "streaming"],
+    "gpt-4o":                       ["tools", "streaming"],
+    "deepseek-v3-0324":             ["tools", "streaming"],
+    "deepseek-v3":                  ["tools", "streaming"],
+    "deepseek-r1":                  ["tools", "streaming", "reasoning"],
+}
+
+
+def _get_capabilities(model_id: str) -> list[str]:
+    return _CAPABILITIES.get(model_id.lower(), ["streaming"])
+
 
 def _variables(last_input: str) -> str:
     """The stringified `variables` blob Trae's prompt pipeline expects."""
@@ -34,11 +50,27 @@ def build_trae_payload(messages: list, model: str) -> dict:
     def as_text(content) -> str:
         return content if isinstance(content, str) else str(content)
 
-    last_input = as_text(messages[-1]["content"]) if messages else ""
+    # Trae's chat endpoint does not forward system-role messages to the model.
+    # Extract them and prepend their content to user_input so the model sees them.
+    system_parts: list[str] = []
+    chat_messages: list[dict] = []
+    for m in messages:
+        if m["role"] == "system":
+            system_parts.append(as_text(m["content"]))
+        else:
+            chat_messages.append(m)
+    if not chat_messages:          # safety: all messages were system — keep as-is
+        chat_messages = list(messages)
+        system_parts = []
+
+    last_input = as_text(chat_messages[-1]["content"]) if chat_messages else ""
+    if system_parts:
+        last_input = "\n\n".join(system_parts) + "\n\n---\n\n" + last_input
+
     session_id = str(uuid.uuid4())
 
     history = []
-    for m in messages[:-1]:
+    for m in chat_messages[:-1]:
         history.append({
             "role": m["role"],
             "content": as_text(m["content"]),
@@ -59,7 +91,7 @@ def build_trae_payload(messages: list, model: str) -> dict:
         "chat_history": history,
         "session_id": session_id,
         "conversation_id": session_id,
-        "current_turn": max(len(messages) - 1, 0),
+        "current_turn": max(len(chat_messages) - 1, 0),
         "valid_turns": list(range(len(history))),
         "multi_media": [],
         "model_name": model,
@@ -104,7 +136,9 @@ async def _trae_chat_events(messages: list, model: str):
 
 
 def _delta(reasoning: str, response: str, think_open: list) -> str:
-    """Build one content delta, wrapping reasoning_content in <think></think>."""
+    """Build one content delta, wrapping reasoning_content in <think></think>.
+    Note: Trae's API currently streams all content in the 'response' field;
+    'reasoning_content' is supported here for forward compatibility."""
     out = ""
     if reasoning:
         out += ("<think>\n" + reasoning) if not think_open[0] else reasoning
@@ -115,11 +149,119 @@ def _delta(reasoning: str, response: str, think_open: list) -> str:
     return out
 
 
-async def stream_completion(messages: list, model: str, max_tokens: int | None = None):
+def _convert_tool_messages(messages: list) -> list:
+    """Convert tool-role and tool_calls messages to plain text for Trae's format."""
+    out = []
+    for m in messages:
+        role = m.get("role")
+        if role == "tool":
+            tid = m.get("tool_call_id", "")
+            out.append({"role": "user", "content": f"[Tool result for {tid}: {m.get('content', '')}]"})
+        elif role == "assistant" and m.get("tool_calls"):
+            text_preamble = m.get("content") or ""
+            parts = [text_preamble] if text_preamble else []
+            for tc in m["tool_calls"]:
+                fn = tc.get("function", {})
+                parts.append(f"[Called: {fn.get('name', '')}({fn.get('arguments', '')})]")
+            out.append({"role": "assistant", "content": "\n".join(parts)})
+        else:
+            out.append({"role": role, "content": m.get("content") or ""})
+    return out
+
+
+def _build_tools_system_prompt(tools: list, tool_choice) -> str:
+    """Build a system prompt that instructs the model to respond with a JSON tool call."""
+    tool_defs = json.dumps(tools, indent=2)
+    prompt = (
+        "You have access to the following functions. "
+        "When you want to call a function, respond ONLY with a JSON object — no other text:\n"
+        '{"tool_calls": [{"id": "call_<id>", "type": "function", '
+        '"function": {"name": "<name>", "arguments": "<json-escaped-args>"}}]}\n\n'
+        f"Available functions:\n{tool_defs}"
+    )
+    if tool_choice == "required":
+        prompt += "\n\nYou MUST call a function. Do not reply with plain text."
+    return prompt
+
+
+def _parse_tool_call_response(text: str) -> list | None:
+    """Return parsed tool_calls list if text is a valid tool call JSON, else None.
+    Handles models that wrap JSON in markdown code fences (```json ... ```)."""
+    stripped = text.strip()
+    # Strip markdown code fences that some models add around JSON output
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # Drop first line (``` or ```json) and last line (```)
+        inner = "\n".join(lines[1:-1]).strip() if len(lines) > 2 else ""
+        if inner:
+            stripped = inner
+    try:
+        obj = json.loads(stripped)
+        calls = obj.get("tool_calls") if isinstance(obj, dict) else None
+        if not isinstance(calls, list) or not calls:
+            return None
+        for call in calls:
+            if not isinstance(call, dict) or "function" not in call:
+                return None
+            if "id" not in call:
+                call["id"] = f"call_{uuid.uuid4().hex[:8]}"
+            call.setdefault("type", "function")
+        return calls
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _prepare_messages(messages: list, tools: list | None, tool_choice) -> list:
+    """Inject tool system prompt and convert tool messages when tools are provided."""
+    if not tools:
+        return messages
+    converted = _convert_tool_messages(messages)
+    sys_content = _build_tools_system_prompt(tools, tool_choice)
+    if converted and converted[0]["role"] == "system":
+        converted[0] = {"role": "system", "content": sys_content + "\n\n" + converted[0]["content"]}
+        return converted
+    return [{"role": "system", "content": sys_content}] + converted
+
+
+async def stream_completion(
+    messages: list, model: str, max_tokens: int | None = None,
+    tools: list | None = None, tool_choice=None,
+):
+    prep = _prepare_messages(messages, tools, tool_choice)
+
+    if tools:
+        # Buffer full response — needed to detect if output is a tool call
+        content, reasoning, finish_reason = "", "", "stop"
+        async for event, data in _trae_chat_events(prep, model):
+            if event == "output":
+                content += data.get("response") or ""
+                reasoning += data.get("reasoning_content") or ""
+            elif event == "done":
+                finish_reason = data.get("finish_reason") or "stop"
+        created = int(time.time())
+        cid = f"chatcmpl-{created}"
+        tool_calls = _parse_tool_call_response(content)
+        if tool_calls:
+            chunk = {
+                "id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": None, "tool_calls": [{"index": i, **tc} for i, tc in enumerate(tool_calls)]}, "finish_reason": "tool_calls"}],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+        else:
+            full = f"<think>\n{reasoning}\n</think>\n\n{content}" if reasoning else content
+            chunk = {
+                "id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
+                "choices": [{"index": 0, "delta": {"content": full}, "finish_reason": finish_reason}],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+        yield "[DONE]"
+        return
+
+    # Original streaming path (no tools)
     think_open = [False]
     created = int(time.time())
     cid = f"chatcmpl-{created}"
-    async for event, data in _trae_chat_events(messages, model):
+    async for event, data in _trae_chat_events(prep, model):
         if event == "output":
             delta = _delta(data.get("reasoning_content") or "", data.get("response") or "", think_open)
             if delta:
@@ -140,9 +282,13 @@ async def stream_completion(messages: list, model: str, max_tokens: int | None =
             return
 
 
-async def non_stream_completion(messages: list, model: str, max_tokens: int | None = None) -> dict:
+async def non_stream_completion(
+    messages: list, model: str, max_tokens: int | None = None,
+    tools: list | None = None, tool_choice=None,
+) -> dict:
+    prep = _prepare_messages(messages, tools, tool_choice)
     content, reasoning, finish_reason = "", "", "stop"
-    async for event, data in _trae_chat_events(messages, model):
+    async for event, data in _trae_chat_events(prep, model):
         if event == "output":
             content += data.get("response") or ""
             reasoning += data.get("reasoning_content") or ""
@@ -151,14 +297,22 @@ async def non_stream_completion(messages: list, model: str, max_tokens: int | No
         elif event == "done":
             if data.get("finish_reason"):
                 finish_reason = data["finish_reason"]
-    full = f"<think>\n{reasoning}\n</think>\n\n{content}" if reasoning else content
+
     created = int(time.time())
+    cid = f"chatcmpl-{created}"
+
+    tool_calls = _parse_tool_call_response(content) if tools else None
+    if tool_calls:
+        return {
+            "id": cid, "object": "chat.completion", "created": created, "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": tool_calls}, "finish_reason": "tool_calls"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    full = f"<think>\n{reasoning}\n</think>\n\n{content}" if reasoning else content
     return {
-        "id": f"chatcmpl-{created}", "object": "chat.completion", "created": created,
-        "model": model,
-        "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": full}, "finish_reason": finish_reason}
-        ],
+        "id": cid, "object": "chat.completion", "created": created, "model": model,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": full}, "finish_reason": finish_reason}],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
 
@@ -178,5 +332,8 @@ async def list_models() -> list[dict]:
         name = m.get("name") or m.get("model_name") or m.get("id", "")
         if not name or name in EXCLUDE_MODELS:
             continue
-        models.append({"id": name, "object": "model", "created": int(time.time()), "owned_by": "trae"})
+        models.append({
+            "id": name, "object": "model", "created": int(time.time()),
+            "owned_by": "trae", "capabilities": _get_capabilities(name),
+        })
     return models

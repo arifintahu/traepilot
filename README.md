@@ -16,6 +16,7 @@ Trae IDE has a great model subscription but locks you into its own chat UI. Trae
 |---|---|
 | ❌ Trae models only in Trae's UI | ✅ Use Trae models in any client |
 | ❌ Can't use Cline / Continue / Cherry Studio | ✅ Drop-in OpenAI-compatible API |
+| ❌ No tool/function calling support | ✅ OpenAI-style tool calls (emulated) |
 | ❌ No usage visibility | ✅ Local SQLite usage tracking + web dashboard |
 
 ---
@@ -79,6 +80,94 @@ API Key:   (leave empty, or set API_KEY in .env for local auth)
 
 ---
 
+## 🤖 Available Models
+
+Fetch the live list anytime:
+```bash
+curl http://127.0.0.1:8787/v1/models
+```
+
+Working models (verified against the API):
+
+| Model ID | Capabilities | Notes |
+|---|---|---|
+| `deepseek-V3` | tools · streaming | Recommended default |
+| `deepseek-V3-0324` | tools · streaming | |
+| `deepseek-R1` | tools · streaming · reasoning | Thinking-class model |
+| `gpt-4o` | tools · streaming | |
+| `gpt-4.1-2025-04-14` | tools · streaming | |
+| `gemini-2.5-pro-preview-03-25` | tools · streaming · reasoning | Coding questions only via Trae |
+| `gemini_2.5_flash` | tools · streaming · reasoning | |
+
+> ℹ️ **Newer models** (GPT-5.x, Gemini-3, MiniMax, Kimi…) shown in Trae IDE cannot be proxied — their requests are encrypted at the application layer via ByteDance's "aha" transport. `/v1/models` lists only what's actually reachable.
+
+> ℹ️ **Claude models** (`claude3.5`, `aws_sdk_claude37_sonnet`) are excluded by default — they return error `4023` unless your account/region has specific access. Re-enable by editing `TRAE_EXCLUDE_MODELS` in `.env`.
+
+The `capabilities` field is returned on every model object in `/v1/models`, and each model card in the dashboard shows the same chips.
+
+---
+
+## 🔧 Tool Calls (Function Calling)
+
+TraePilot emulates OpenAI-style tool calls for all models — Trae's API has no native function calling, so the proxy handles it transparently:
+
+1. Tool definitions are injected into the request as a system prompt
+2. The model is instructed to respond with a JSON `tool_calls` object
+3. The proxy parses the response and returns it in the standard OpenAI format
+
+**Usage — identical to the OpenAI API:**
+
+```bash
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-V3",
+    "messages": [{"role": "user", "content": "What is the weather in Paris?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather for a city",
+        "parameters": {
+          "type": "object",
+          "properties": {"city": {"type": "string"}},
+          "required": ["city"]
+        }
+      }
+    }],
+    "tool_choice": "required"
+  }'
+```
+
+Response follows the OpenAI format:
+```json
+{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [{
+        "id": "call_abc123",
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "arguments": "{\"city\": \"Paris\"}"
+        }
+      }]
+    }
+  }]
+}
+```
+
+**Supported `tool_choice` values:** `"auto"`, `"required"`, `{"type": "function", "function": {"name": "..."}}`
+
+**Multi-turn tool use** (passing tool results back) is also supported — use `role: "tool"` messages as normal.
+
+> ⚠️ Tool calls are emulated. The model may occasionally respond with prose instead of a JSON call, especially with `tool_choice: "auto"`. Use `tool_choice: "required"` for deterministic behavior.
+
+---
+
 ## 🖥️ Dashboard
 
 Open the built-in dashboard in any browser while the proxy is running:
@@ -93,36 +182,11 @@ Five sections via the sidebar:
 |---|---|
 | **Usage** | Stat cards (requests, tokens) with sparklines, 7-day bar chart with hover tooltip, per-model breakdown table. Period tabs: 24h / 7d / 30d / All. |
 | **History** | Full request log — searchable by prompt/model, filterable by status (All / OK / Errors), model dropdown filter, paginated. |
-| **Models** | Live model list from Trae, grouped by provider (Gemini / OpenAI / DeepSeek / Claude) with color-coded avatar cards. Copy model ID to clipboard. |
+| **Models** | Live model list from Trae, grouped by provider (Gemini / OpenAI / DeepSeek) with color-coded avatar cards. Each card shows capability chips (⚙ tools · ⚡ stream · 🧠 reasoning). Copy model ID to clipboard. |
 | **Test Chat** | Send `"Hello! Are you working?"` to any model you select. Shows the raw response, model, and latency. |
 | **Config** | All env vars grouped into Connection / Device / IDE. Sensitive values (`API_KEY`, `TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, `TRAE_DEVICE_ID`) are masked server-side — the real value is never sent to the browser. |
 
 > 💡 If `API_KEY` is set in `.env`, the dashboard shows a key prompt on load and stores it in `sessionStorage` for the tab's lifetime.
-
----
-
-## 🤖 Available Models
-
-Fetch the live list anytime:
-```bash
-curl http://127.0.0.1:8787/v1/models
-```
-
-Working models (verified against the API):
-
-| Model ID | Notes |
-|---|---|
-| `deepseek-V3` | ✅ Recommended default |
-| `deepseek-V3-0324` | ✅ |
-| `deepseek-R1` | ✅ Reasoning model |
-| `gpt-4o` | ✅ |
-| `gpt-4.1-2025-04-14` | ✅ |
-| `gemini-2.5-pro-preview-03-25` | ✅ |
-| `gemini_2.5_flash` | ✅ |
-| `claude3.5` | ⚠️ May return 4023 (account/region) |
-| `aws_sdk_claude37_sonnet` | ⚠️ May return 4023 (account/region) |
-
-> ℹ️ **Newer models** (GPT-5.x, Gemini-3, MiniMax, Kimi…) shown in Trae IDE cannot be proxied — their requests are encrypted at the application layer via ByteDance's "aha" transport. `/v1/models` lists only what's actually reachable.
 
 ---
 
@@ -209,8 +273,8 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/v1/models` | GET | optional | List available models |
-| `/v1/chat/completions` | POST | optional | Chat (streaming and non-streaming) |
+| `/v1/models` | GET | optional | List available models with capability tags |
+| `/v1/chat/completions` | POST | optional | Chat — streaming, non-streaming, and tool calls |
 | `/usage/stats` | GET | optional | Aggregate token/request counts |
 | `/usage/history` | GET | optional | Paginated request log |
 | `/usage/daily` | GET | optional | Daily rollup |
@@ -228,7 +292,7 @@ curl "http://127.0.0.1:8787/usage/daily?days=7"
 # Health check
 curl http://127.0.0.1:8787/health
 
-# List models
+# List models (includes capabilities field)
 curl http://127.0.0.1:8787/v1/models
 
 # Chat (non-streaming)
@@ -240,14 +304,34 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 curl -N http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"deepseek-V3","messages":[{"role":"user","content":"Count to 5"}],"stream":true}'
+
+# Tool call
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-V3","messages":[{"role":"user","content":"Weather in Tokyo?"}],"tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],"tool_choice":"required"}'
 ```
+
+---
+
+## 🧪 Running Tests
+
+```bash
+# Unit tests (fast, no network)
+pytest tests/ --ignore=tests/e2e -v
+
+# E2E tests — hits the real Trae API (requires valid .env credentials)
+pytest tests/e2e/ -m e2e -v
+```
+
+The e2e suite tests every model against every capability it claims to support: basic chat, streaming, tool calls, and reasoning. Tests skip automatically if credentials are missing or the API is unreachable.
 
 ---
 
 ## ⚠️ Known Limitations
 
+- **Tool calls are emulated.** Trae's API has no native function calling. The proxy injects tool definitions as a system prompt and parses the model's JSON response. Works reliably with `tool_choice: "required"`; less deterministic with `"auto"`.
+- **No image input.** Trae's endpoint does not forward image content from messages — multimodal requests are not supported.
 - **Newer models can't be proxied.** GPT-5.x, Gemini-3, MiniMax, Kimi — these run through `POST /api/agent/v3/create_agent_task` with an application-layer encrypted body (ByteDance's "aha" transport, entropy ≈ 8.0). The request can't be replayed without reversing the encryption.
-- **Claude models may fail.** `claude3.5` and `aws_sdk_claude37_sonnet` return error `4023` if your account or region doesn't have access.
 - **The chat protocol is internal.** Built from reverse-engineering Trae's prompt-pipeline — a Trae update can break it. If chat stops working, check `trae_client.py` first.
 
 ---
