@@ -151,3 +151,100 @@ async def test_list_models_includes_capabilities():
     assert set(gpt['capabilities']) == {'tools', 'streaming', 'vision'}
     unknown = next(m for m in models if m['id'] == 'unknown-model')
     assert unknown['capabilities'] == ['streaming']
+
+
+# ── _convert_tool_messages ────────────────────────────────────────────────────
+
+def test_convert_tool_role_to_user():
+    from trae_client import _convert_tool_messages
+    msgs = [{'role': 'tool', 'content': '72°F', 'tool_call_id': 'call_1'}]
+    out = _convert_tool_messages(msgs)
+    assert out[0]['role'] == 'user'
+    assert 'call_1' in out[0]['content']
+    assert '72°F' in out[0]['content']
+
+
+def test_convert_assistant_tool_calls_to_text():
+    from trae_client import _convert_tool_messages
+    msgs = [{'role': 'assistant', 'content': None, 'tool_calls': [
+        {'id': 'call_1', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{"city":"NY"}'}}
+    ]}]
+    out = _convert_tool_messages(msgs)
+    assert out[0]['role'] == 'assistant'
+    assert 'get_weather' in out[0]['content']
+
+
+def test_convert_plain_messages_unchanged():
+    from trae_client import _convert_tool_messages
+    msgs = [{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'hi'}]
+    out = _convert_tool_messages(msgs)
+    assert out == msgs
+
+
+# ── _build_tools_system_prompt ────────────────────────────────────────────────
+
+def test_build_tools_system_prompt_contains_function_name():
+    from trae_client import _build_tools_system_prompt
+    tools = [{'type': 'function', 'function': {'name': 'get_weather', 'parameters': {}}}]
+    prompt = _build_tools_system_prompt(tools, 'auto')
+    assert 'get_weather' in prompt
+    assert 'tool_calls' in prompt
+
+
+def test_build_tools_system_prompt_required_adds_must_call():
+    from trae_client import _build_tools_system_prompt
+    tools = [{'type': 'function', 'function': {'name': 'fn', 'parameters': {}}}]
+    prompt = _build_tools_system_prompt(tools, 'required')
+    assert 'MUST' in prompt
+
+
+# ── _parse_tool_call_response ─────────────────────────────────────────────────
+
+def test_parse_tool_call_response_valid_json():
+    from trae_client import _parse_tool_call_response
+    text = '{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\\"city\\":\\"NY\\"}"}}]}'
+    calls = _parse_tool_call_response(text)
+    assert calls is not None
+    assert calls[0]['function']['name'] == 'get_weather'
+
+
+def test_parse_tool_call_response_plain_text_returns_none():
+    from trae_client import _parse_tool_call_response
+    assert _parse_tool_call_response('The weather in NY is 72°F.') is None
+
+
+def test_parse_tool_call_response_adds_missing_id():
+    from trae_client import _parse_tool_call_response
+    text = '{"tool_calls": [{"type": "function", "function": {"name": "fn", "arguments": "{}"}}]}'
+    calls = _parse_tool_call_response(text)
+    assert calls is not None
+    assert calls[0]['id'].startswith('call_')
+
+
+# ── _prepare_messages ─────────────────────────────────────────────────────────
+
+def test_prepare_messages_injects_system_prompt():
+    from trae_client import _prepare_messages
+    msgs = [{'role': 'user', 'content': 'use a tool'}]
+    tools = [{'type': 'function', 'function': {'name': 'fn', 'parameters': {}}}]
+    out = _prepare_messages(msgs, tools, 'auto')
+    assert out[0]['role'] == 'system'
+    assert 'fn' in out[0]['content']
+    assert out[-1]['role'] == 'user'
+
+
+def test_prepare_messages_no_tools_returns_unchanged():
+    from trae_client import _prepare_messages
+    msgs = [{'role': 'user', 'content': 'hello'}]
+    out = _prepare_messages(msgs, None, None)
+    assert out == msgs
+
+
+def test_prepare_messages_merges_with_existing_system():
+    from trae_client import _prepare_messages
+    msgs = [{'role': 'system', 'content': 'Be helpful.'}, {'role': 'user', 'content': 'hi'}]
+    tools = [{'type': 'function', 'function': {'name': 'fn', 'parameters': {}}}]
+    out = _prepare_messages(msgs, tools, 'auto')
+    assert out[0]['role'] == 'system'
+    assert 'Be helpful.' in out[0]['content']
+    assert 'fn' in out[0]['content']

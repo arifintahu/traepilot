@@ -131,6 +131,70 @@ def _delta(reasoning: str, response: str, think_open: list) -> str:
     return out
 
 
+def _convert_tool_messages(messages: list) -> list:
+    """Convert tool-role and tool_calls messages to plain text for Trae's format."""
+    out = []
+    for m in messages:
+        role = m.get("role")
+        if role == "tool":
+            tid = m.get("tool_call_id", "")
+            out.append({"role": "user", "content": f"[Tool result for {tid}: {m.get('content', '')}]"})
+        elif role == "assistant" and m.get("tool_calls"):
+            parts = []
+            for tc in m["tool_calls"]:
+                fn = tc.get("function", {})
+                parts.append(f"[Called: {fn.get('name', '')}({fn.get('arguments', '')})]")
+            out.append({"role": "assistant", "content": "\n".join(parts)})
+        else:
+            out.append({"role": role, "content": m.get("content") or ""})
+    return out
+
+
+def _build_tools_system_prompt(tools: list, tool_choice) -> str:
+    """Build a system prompt that instructs the model to respond with a JSON tool call."""
+    tool_defs = json.dumps(tools, indent=2)
+    prompt = (
+        "You have access to the following functions. "
+        "When you want to call a function, respond ONLY with a JSON object — no other text:\n"
+        '{"tool_calls": [{"id": "call_<id>", "type": "function", '
+        '"function": {"name": "<name>", "arguments": "<json-escaped-args>"}}]}\n\n'
+        f"Available functions:\n{tool_defs}"
+    )
+    if tool_choice == "required":
+        prompt += "\n\nYou MUST call a function. Do not reply with plain text."
+    return prompt
+
+
+def _parse_tool_call_response(text: str) -> list | None:
+    """Return parsed tool_calls list if text is a valid tool call JSON, else None."""
+    try:
+        obj = json.loads(text.strip())
+        calls = obj.get("tool_calls") if isinstance(obj, dict) else None
+        if not isinstance(calls, list) or not calls:
+            return None
+        for call in calls:
+            if not isinstance(call, dict) or "function" not in call:
+                return None
+            if "id" not in call:
+                call["id"] = f"call_{uuid.uuid4().hex[:8]}"
+            call.setdefault("type", "function")
+        return calls
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _prepare_messages(messages: list, tools: list | None, tool_choice) -> list:
+    """Inject tool system prompt and convert tool messages when tools are provided."""
+    if not tools:
+        return messages
+    converted = _convert_tool_messages(messages)
+    sys_content = _build_tools_system_prompt(tools, tool_choice)
+    if converted and converted[0]["role"] == "system":
+        converted[0] = {"role": "system", "content": sys_content + "\n\n" + converted[0]["content"]}
+        return converted
+    return [{"role": "system", "content": sys_content}] + converted
+
+
 async def stream_completion(messages: list, model: str, max_tokens: int | None = None):
     think_open = [False]
     created = int(time.time())
