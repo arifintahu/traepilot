@@ -355,4 +355,13 @@ async def dashboard():
 
 if __name__ == "__main__":
     import uvicorn
+    _host_disp = "localhost" if BIND_HOST in ("127.0.0.1", "0.0.0.0", "::1") else BIND_HOST
+    _base = f"http://{_host_disp}:{BIND_PORT}"
+    _title = f"TraePilot  v{app.version}"
+    _w = 46
+    print(f"\n  ┌{'─' * _w}┐")
+    print(f"  │  {_title:<{_w - 2}}│")
+    print(f"  └{'─' * _w}┘\n")
+    print(f"  Proxy      {_base}/v1")
+    print(f"  Dashboard  {_base}/dashboard\n")
     uvicorn.run("main:app", host=BIND_HOST, port=BIND_PORT, reload=False)
