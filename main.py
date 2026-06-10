@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="TraePilot", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="TraePilot", version="0.3.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 security = HTTPBearer(auto_error=False)
 
