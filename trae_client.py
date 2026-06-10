@@ -1,8 +1,12 @@
 import json
+import logging
+import re
 import time
 import uuid
 import httpx
 from config import TRAE_BASE_URL, TRAE_HEADERS, EXCLUDE_MODELS
+
+logger = logging.getLogger("traepilot")
 
 # Trae's chat-scene endpoint: a prompt-pipeline protocol that streams named SSE
 # events (output / done / error), not OpenAI SSE. Request format derived from the
@@ -184,31 +188,113 @@ def _build_tools_system_prompt(tools: list, tool_choice) -> str:
     return prompt
 
 
-def _parse_tool_call_response(text: str) -> list | None:
-    """Return parsed tool_calls list if text is a valid tool call JSON, else None.
-    Handles models that wrap JSON in markdown code fences (```json ... ```)."""
+# Models often disobey the "respond ONLY with JSON" instruction and embed the
+# tool-call object after prose, inside backticks, or cut off mid-stream.
+_TOOL_CALL_START = re.compile(r'\{\s*"tool_calls"\s*:')
+_FENCE_BEFORE = re.compile(r"(?:```(?:json)?|`)\s*$")
+_FENCE_AFTER = re.compile(r"^\s*(?:```(?:json)?|`)")
+
+
+def _validate_tool_calls(obj) -> list | None:
+    """Return the normalized tool_calls list from a parsed object, else None."""
+    calls = obj.get("tool_calls") if isinstance(obj, dict) else None
+    if not isinstance(calls, list) or not calls:
+        return None
+    for call in calls:
+        if not isinstance(call, dict) or "function" not in call:
+            return None
+        if "id" not in call:
+            call["id"] = f"call_{uuid.uuid4().hex[:8]}"
+        call.setdefault("type", "function")
+    return calls
+
+
+def _find_balanced_json(text: str, start: int) -> tuple[int, list, bool]:
+    """Scan a JSON value from text[start] == '{', tracking strings and escapes.
+    Returns (end_index_exclusive, open_stack, in_string); end is -1 if the
+    text runs out before the object balances (truncated output)."""
+    stack: list[str] = []
+    in_str = esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c in "{[":
+            stack.append(c)
+        elif c in "}]":
+            if stack:
+                stack.pop()
+            if not stack:
+                return i + 1, stack, False
+    return -1, stack, in_str
+
+
+def _repair_json(fragment: str, open_stack: list, in_string: bool) -> str:
+    """Close an unterminated string, drop a trailing comma, and append the
+    missing closers so a truncated tool-call object becomes parseable."""
+    repaired = fragment
+    if in_string:
+        repaired += '"'
+    repaired = repaired.rstrip()
+    if repaired.endswith(","):
+        repaired = repaired[:-1]
+    for opener in reversed(open_stack):
+        repaired += "}" if opener == "{" else "]"
+    return repaired
+
+
+def _extract_tool_calls(text: str) -> tuple[str, list | None]:
+    """Extract tool-call JSON from anywhere in model output (after prose,
+    inside backticks/fences, or truncated). Returns (remaining_prose, calls);
+    calls is None and prose is the original text when nothing usable is found."""
     stripped = text.strip()
-    # Strip markdown code fences that some models add around JSON output
+    # Fast path: the entire content is the JSON, optionally fence-wrapped
     if stripped.startswith("```"):
         lines = stripped.splitlines()
-        # Drop first line (``` or ```json) and last line (```)
         inner = "\n".join(lines[1:-1]).strip() if len(lines) > 2 else ""
         if inner:
             stripped = inner
     try:
-        obj = json.loads(stripped)
-        calls = obj.get("tool_calls") if isinstance(obj, dict) else None
-        if not isinstance(calls, list) or not calls:
-            return None
-        for call in calls:
-            if not isinstance(call, dict) or "function" not in call:
-                return None
-            if "id" not in call:
-                call["id"] = f"call_{uuid.uuid4().hex[:8]}"
-            call.setdefault("type", "function")
-        return calls
+        calls = _validate_tool_calls(json.loads(stripped))
+        if calls:
+            return "", calls
     except (json.JSONDecodeError, ValueError):
-        return None
+        pass
+
+    for m in _TOOL_CALL_START.finditer(text):
+        start = m.start()
+        end, stack, in_str = _find_balanced_json(text, start)
+        if end == -1:
+            candidate = _repair_json(text[start:], stack, in_str)
+            end = len(text)
+        else:
+            candidate = text[start:end]
+        try:
+            calls = _validate_tool_calls(json.loads(candidate))
+        except (json.JSONDecodeError, ValueError):
+            calls = None
+        if calls:
+            before = _FENCE_BEFORE.sub("", text[:start]).rstrip()
+            after = _FENCE_AFTER.sub("", text[end:]).strip()
+            prose = (before + "\n" + after).strip() if after else before.strip()
+            return prose, calls
+        logger.warning(
+            "tool_calls-like JSON could not be parsed or repaired; "
+            "passing content through unchanged: %r", text[start:end][:500],
+        )
+    return text, None
+
+
+def _parse_tool_call_response(text: str) -> list | None:
+    """Return parsed tool_calls found in text, else None (prose discarded)."""
+    return _extract_tool_calls(text)[1]
 
 
 def _prepare_messages(messages: list, tools: list | None, tool_choice) -> list:
@@ -240,11 +326,11 @@ async def stream_completion(
                 finish_reason = data.get("finish_reason") or "stop"
         created = int(time.time())
         cid = f"chatcmpl-{created}"
-        tool_calls = _parse_tool_call_response(content)
+        prose, tool_calls = _extract_tool_calls(content)
         if tool_calls:
             chunk = {
                 "id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
-                "choices": [{"index": 0, "delta": {"role": "assistant", "content": None, "tool_calls": [{"index": i, **tc} for i, tc in enumerate(tool_calls)]}, "finish_reason": "tool_calls"}],
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": prose or None, "tool_calls": [{"index": i, **tc} for i, tc in enumerate(tool_calls)]}, "finish_reason": "tool_calls"}],
             }
             yield f"data: {json.dumps(chunk)}\n\n"
         else:
@@ -301,11 +387,11 @@ async def non_stream_completion(
     created = int(time.time())
     cid = f"chatcmpl-{created}"
 
-    tool_calls = _parse_tool_call_response(content) if tools else None
+    prose, tool_calls = _extract_tool_calls(content) if tools else (content, None)
     if tool_calls:
         return {
             "id": cid, "object": "chat.completion", "created": created, "model": model,
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": tool_calls}, "finish_reason": "tool_calls"}],
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": prose or None, "tool_calls": tool_calls}, "finish_reason": "tool_calls"}],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 

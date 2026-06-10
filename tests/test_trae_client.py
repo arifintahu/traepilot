@@ -246,6 +246,92 @@ def test_parse_tool_call_response_strips_plain_fences():
     assert calls is not None
 
 
+# ── _extract_tool_calls (prose + JSON mixed in one message) ───────────────────
+# Fixtures 1-3 are verbatim leaks from the meridian client's logs: the model
+# mixed prose and tool-call JSON, the old whole-string parser returned None,
+# and the client treated the text as a final answer.
+
+def test_extract_prose_then_truncated_json_at_end():
+    # Example 1: prose, then tool-call JSON missing its closing "]}"
+    from trae_client import _extract_tool_calls
+    text = (
+        "I will proceed with evaluating the dominant BILLY token. My next step is "
+        "to find the associated DLMM pool. I will search for pools using its mint "
+        "address to be precise.\n"
+        '{"tool_calls": [{"id": "call_66542111", "type": "function", "function": '
+        '{"name": "search_pools", "arguments": "{\\"query\\": '
+        '\\"3B5wuUrMEi5yATD7on46hKfej3pfmd7t1RKgrsN3pump\\"}"}}'
+    )
+    prose, calls = _extract_tool_calls(text)
+    assert calls is not None
+    assert calls[0]['function']['name'] == 'search_pools'
+    args = json.loads(calls[0]['function']['arguments'])
+    assert args['query'] == '3B5wuUrMEi5yATD7on46hKfej3pfmd7t1RKgrsN3pump'
+    assert 'I will proceed' in prose
+    assert 'tool_calls' not in prose
+
+
+def test_extract_unrepairable_json_logs_warning(caplog):
+    # Example 2: JSON truncated mid-id-string — no function key even after repair
+    import logging
+    from trae_client import _extract_tool_calls
+    text = (
+        "...I'll start by fetching the top candidates again."
+        '{"tool_calls": [{"id": "call_4y6w447h244444444444444444444444444'
+    )
+    with caplog.at_level(logging.WARNING, logger='traepilot'):
+        prose, calls = _extract_tool_calls(text)
+    assert calls is None
+    assert prose == text
+    assert 'tool_calls' in caplog.text
+
+
+def test_extract_backtick_wrapped_json_after_prose():
+    # Example 3: prose with backtick-wrapped JSON
+    from trae_client import _extract_tool_calls
+    text = (
+        'First, I need to get the top candidates. '
+        '`{"tool_calls": [{"id": "call_4542345454", "type": "function", '
+        '"function": {"name": "get_top_candidates", "arguments": "{}"}}]}`'
+    )
+    prose, calls = _extract_tool_calls(text)
+    assert calls is not None
+    assert calls[0]['function']['name'] == 'get_top_candidates'
+    assert prose == 'First, I need to get the top candidates.'
+
+
+def test_extract_fenced_json_after_prose():
+    from trae_client import _extract_tool_calls
+    text = (
+        'Let me call the tool.\n```json\n'
+        '{"tool_calls": [{"id": "call_1", "function": {"name": "fn", "arguments": "{}"}}]}\n```'
+    )
+    prose, calls = _extract_tool_calls(text)
+    assert calls is not None
+    assert calls[0]['function']['name'] == 'fn'
+    assert prose == 'Let me call the tool.'
+
+
+def test_extract_pure_prose_unchanged(caplog):
+    import logging
+    from trae_client import _extract_tool_calls
+    text = 'The weather in NY is 72°F. No tools needed.'
+    with caplog.at_level(logging.WARNING, logger='traepilot'):
+        prose, calls = _extract_tool_calls(text)
+    assert calls is None
+    assert prose == text
+    assert caplog.text == ''
+
+
+def test_extract_pure_tool_call_json_happy_path():
+    from trae_client import _extract_tool_calls
+    text = '{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\\"city\\":\\"NY\\"}"}}]}'
+    prose, calls = _extract_tool_calls(text)
+    assert prose == ''
+    assert calls is not None
+    assert calls[0]['function']['name'] == 'get_weather'
+
+
 # ── _prepare_messages ─────────────────────────────────────────────────────────
 
 def test_prepare_messages_injects_system_prompt():
@@ -336,3 +422,50 @@ async def test_stream_completion_emits_tool_call_chunk():
     assert choice['finish_reason'] == 'tool_calls'
     assert choice['delta']['tool_calls'][0]['function']['name'] == 'get_weather'
     assert choice['delta']['tool_calls'][0].get('index') == 0
+
+
+@pytest.mark.asyncio
+async def test_non_stream_completion_extracts_tool_call_after_prose():
+    from trae_client import non_stream_completion
+    text = (
+        'I will search for pools now.\n'
+        '{"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "search_pools", "arguments": "{\\"query\\":\\"BILLY\\"}"}}]}'
+    )
+
+    async def fake_events(messages, model):
+        yield 'output', {'response': text, 'reasoning_content': ''}
+        yield 'done', {'finish_reason': 'stop'}
+
+    tools = [{'type': 'function', 'function': {'name': 'search_pools', 'parameters': {}}}]
+    with patch('trae_client._trae_chat_events', fake_events):
+        result = await non_stream_completion([{'role': 'user', 'content': 'go'}], 'gpt-4o', tools=tools)
+    choice = result['choices'][0]
+    assert choice['finish_reason'] == 'tool_calls'
+    assert choice['message']['tool_calls'][0]['function']['name'] == 'search_pools'
+    assert choice['message']['content'] == 'I will search for pools now.'
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_extracts_tool_call_split_across_chunks():
+    # Prose + tool-call JSON, with the JSON split across two SSE chunks
+    from trae_client import stream_completion
+    part1 = 'I will search for pools now.\n{"tool_calls": [{"id": "call_1", '
+    part2 = '"type": "function", "function": {"name": "search_pools", "arguments": "{}"}}]}'
+
+    async def fake_events(messages, model):
+        yield 'output', {'response': part1, 'reasoning_content': ''}
+        yield 'output', {'response': part2, 'reasoning_content': ''}
+        yield 'done', {'finish_reason': 'stop'}
+
+    tools = [{'type': 'function', 'function': {'name': 'search_pools', 'parameters': {}}}]
+    chunks = []
+    with patch('trae_client._trae_chat_events', fake_events):
+        async for chunk in stream_completion([{'role': 'user', 'content': 'go'}], 'gpt-4o', tools=tools):
+            chunks.append(chunk)
+
+    data_chunks = [c for c in chunks if c.startswith('data:') and '[DONE]' not in c]
+    assert len(data_chunks) == 1
+    choice = json.loads(data_chunks[0][6:])['choices'][0]
+    assert choice['finish_reason'] == 'tool_calls'
+    assert choice['delta']['tool_calls'][0]['function']['name'] == 'search_pools'
+    assert choice['delta']['content'] == 'I will search for pools now.'
