@@ -113,7 +113,7 @@ TraePilot emulates OpenAI-style tool calls for all models — Trae's API has no 
 
 1. Tool definitions are injected into the request as a system prompt
 2. The model is instructed to respond with a JSON `tool_calls` object
-3. The proxy parses the response and returns it in the standard OpenAI format
+3. The proxy extracts the tool-call JSON from the response — even when the model mixes it with prose, wraps it in backticks or code fences, or truncates it mid-output — and returns it in the standard OpenAI format
 
 **Usage — identical to the OpenAI API:**
 
@@ -160,11 +160,13 @@ Response follows the OpenAI format:
 }
 ```
 
+If the model prefixed the tool call with prose (common with `gemini-2.5-pro`), that text is preserved in `message.content` alongside `tool_calls`; otherwise `content` is `null`.
+
 **Supported `tool_choice` values:** `"auto"`, `"required"`, `{"type": "function", "function": {"name": "..."}}`
 
 **Multi-turn tool use** (passing tool results back) is also supported — use `role: "tool"` messages as normal.
 
-> ⚠️ Tool calls are emulated. The model may occasionally respond with prose instead of a JSON call, especially with `tool_choice: "auto"`. Use `tool_choice: "required"` for deterministic behavior.
+> ⚠️ Tool calls are emulated. The proxy finds tool-call JSON anywhere in the response — after prose, inside backticks or ```` ```json ```` fences — and repairs truncated output when possible. A tool-call-like fragment that can't be repaired is logged as a warning and the text passes through unchanged. Use `tool_choice: "required"` for deterministic behavior.
 
 ---
 
@@ -348,7 +350,7 @@ The e2e suite tests every model against every capability it claims to support: b
 
 ## ⚠️ Known Limitations
 
-- **Tool calls are emulated.** Trae's API has no native function calling. The proxy injects tool definitions as a system prompt and parses the model's JSON response. Works reliably with `tool_choice: "required"`; less deterministic with `"auto"`.
+- **Tool calls are emulated.** Trae's API has no native function calling. The proxy injects tool definitions as a system prompt and extracts the model's JSON tool call from the response — including when it's mixed with prose, fenced, or truncated (repaired when possible). Unrepairable fragments are logged and passed through as plain text. `tool_choice: "required"` remains the most deterministic mode.
 - **No image input.** Trae's endpoint does not forward image content from messages — multimodal requests are not supported.
 - **Newer models can't be proxied.** GPT-5.x, Gemini-3, MiniMax, Kimi — these run through `POST /api/agent/v3/create_agent_task` with an application-layer encrypted body (ByteDance's "aha" transport, entropy ≈ 8.0). The request can't be replayed without reversing the encryption.
 - **The chat protocol is internal.** Built from reverse-engineering Trae's prompt-pipeline — a Trae update can break it. If chat stops working, check `trae_client.py` first.
