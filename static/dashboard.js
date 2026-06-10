@@ -116,6 +116,11 @@ function fmt(n) {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+function toLocalDT(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString();
+}
 function modelChip(id) {
   const fam = FAMILY[familyOf(id)] || FAMILY.Other;
   return `<span class="mchip"><span class="mdot" style="background:${fam.color}"></span>${esc(id)}</span>`;
@@ -319,7 +324,7 @@ function renderHistory() {
   const items = list.slice(_historyOffset, _historyOffset + HISTORY_LIMIT);
   document.getElementById('history-table-body').innerHTML = items.length
     ? items.map(r => `<tr class="history-row" onclick="showHistoryDetail(${r.id})">
-        <td class="mono dim nowrap">${esc((r.timestamp || '').replace('T', ' ').replace('Z', ''))}</td>
+        <td class="mono dim nowrap">${esc(toLocalDT(r.timestamp))}</td>
         <td>${modelChip(r.model)}</td>
         <td><div class="prompt-preview" title="${esc(r.prompt_preview || '')}">${esc(r.prompt_preview || '—')}</div></td>
         <td class="num">${(r.prompt_tokens || 0).toLocaleString()}</td>
@@ -399,7 +404,7 @@ function renderHistoryDetail(d) {
       ${modelChip(d.model)}
       ${statusBadge}
       ${streamPill}
-      <span class="mono dim" style="font-size:0.78rem">${esc((d.timestamp || '').replace('T',' ').replace('Z',' UTC'))}</span>
+      <span class="mono dim" style="font-size:0.78rem">${esc(toLocalDT(d.timestamp))}</span>
     </div>
     <div class="detail-metrics">
       <div class="metric-item">
