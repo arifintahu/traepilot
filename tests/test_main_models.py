@@ -3,14 +3,14 @@ from pydantic import ValidationError
 
 
 def test_message_accepts_tool_role_fields():
-    from main import Message
+    from routes_openai import Message
     m = Message(role='tool', content='result text', tool_call_id='call_abc', name='get_weather')
     assert m.tool_call_id == 'call_abc'
     assert m.name == 'get_weather'
 
 
 def test_message_content_optional_for_assistant_tool_call():
-    from main import Message
+    from routes_openai import Message
     m = Message(role='assistant', content=None, tool_calls=[
         {'id': 'call_1', 'type': 'function', 'function': {'name': 'fn', 'arguments': '{}'}}
     ])
@@ -19,7 +19,7 @@ def test_message_content_optional_for_assistant_tool_call():
 
 
 def test_chat_request_accepts_tools():
-    from main import ChatCompletionRequest, Message
+    from routes_openai import ChatCompletionRequest, Message
     req = ChatCompletionRequest(
         model='gpt-4o',
         messages=[Message(role='user', content='hello')],
@@ -31,7 +31,7 @@ def test_chat_request_accepts_tools():
 
 
 def test_chat_request_tools_default_none():
-    from main import ChatCompletionRequest, Message
+    from routes_openai import ChatCompletionRequest, Message
     req = ChatCompletionRequest(model='gpt-4o', messages=[Message(role='user', content='hi')])
     assert req.tools is None
     assert req.tool_choice is None

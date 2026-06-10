@@ -54,11 +54,19 @@ def client(monkeypatch):
         yield c
 
 
+@pytest.fixture(autouse=True)
+def patch_config(monkeypatch):
+    """Patch config in deps module for auth tests."""
+    import config as cfg
+    monkeypatch.setattr(cfg, "API_KEY", "")
+    monkeypatch.setattr(cfg, "DASHBOARD_PASSWORD", "")
+
+
 # ── non-streaming: record_usage called with correct args ──────────────────────
 
 def test_non_stream_records_ok_on_success(client):
-    with patch("main.non_stream_completion", new=AsyncMock(return_value=_NON_STREAM_RESULT)), \
-         patch("main.record_usage", new=AsyncMock()) as mock_record:
+    with patch("routes_openai.non_stream_completion", new=AsyncMock(return_value=_NON_STREAM_RESULT)), \
+         patch("routes_openai.record_usage", new=AsyncMock()) as mock_record:
         resp = client.post("/v1/chat/completions", json={
             "model": "deepseek-V3",
             "messages": [{"role": "user", "content": "hello"}],
@@ -74,8 +82,8 @@ def test_non_stream_records_ok_on_success(client):
 
 
 def test_non_stream_records_error_when_completion_raises(client):
-    with patch("main.non_stream_completion", new=AsyncMock(side_effect=RuntimeError("fail"))), \
-         patch("main.record_usage", new=AsyncMock()) as mock_record:
+    with patch("routes_openai.non_stream_completion", new=AsyncMock(side_effect=RuntimeError("fail"))), \
+         patch("routes_openai.record_usage", new=AsyncMock()) as mock_record:
         resp = client.post("/v1/chat/completions", json={
             "model": "deepseek-V3",
             "messages": [{"role": "user", "content": "hello"}],
@@ -92,8 +100,8 @@ def test_non_stream_records_error_when_completion_raises(client):
 # ── streaming: record_usage called after stream finishes ─────────────────────
 
 def test_stream_records_ok_and_accumulates_content(client):
-    with patch("main.stream_completion", new=_fake_stream), \
-         patch("main.record_usage", new=AsyncMock()) as mock_record:
+    with patch("routes_openai.stream_completion", new=_fake_stream), \
+         patch("routes_openai.record_usage", new=AsyncMock()) as mock_record:
         resp = client.post("/v1/chat/completions", json={
             "model": "deepseek-V3",
             "messages": [{"role": "user", "content": "hello"}],
@@ -111,7 +119,7 @@ def test_stream_records_ok_and_accumulates_content(client):
 # ── /usage/stats ──────────────────────────────────────────────────────────────
 
 def test_stats_endpoint_returns_200(client):
-    with patch("main.get_stats", return_value={
+    with patch("routes_dashboard.get_stats", return_value={
         "period": "24h", "total_requests": 3,
         "total_prompt_tokens": 100, "total_completion_tokens": 50,
         "total_tokens": 150, "estimated": True, "by_model": {},
@@ -134,7 +142,7 @@ def test_stats_endpoint_default_period_is_24h(client):
         return {"period": period, "total_requests": 0,
                 "total_prompt_tokens": 0, "total_completion_tokens": 0,
                 "total_tokens": 0, "estimated": True, "by_model": {}}
-    with patch("main.get_stats", side_effect=fake_get_stats):
+    with patch("routes_dashboard.get_stats", side_effect=fake_get_stats):
         client.get("/usage/stats")
     assert captured["period"] == "24h"
 
@@ -142,7 +150,7 @@ def test_stats_endpoint_default_period_is_24h(client):
 # ── /usage/history ────────────────────────────────────────────────────────────
 
 def test_history_endpoint_returns_200(client):
-    with patch("main.get_history", return_value={
+    with patch("routes_dashboard.get_history", return_value={
         "total": 1, "offset": 0, "limit": 50, "estimated": True,
         "items": [{
             "id": 1, "timestamp": "2026-06-03T00:00:00Z",
@@ -168,7 +176,7 @@ def test_history_endpoint_rejects_negative_offset(client):
 # ── /usage/daily ──────────────────────────────────────────────────────────────
 
 def test_daily_endpoint_returns_200(client):
-    with patch("main.get_daily", return_value={
+    with patch("routes_dashboard.get_daily", return_value={
         "days": 7, "estimated": True,
         "items": [{"date": "2026-06-03", "requests": 5,
                    "prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300}],
