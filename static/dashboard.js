@@ -318,20 +318,124 @@ function renderHistory() {
   if (_historyOffset >= total && total > 0) _historyOffset = 0;
   const items = list.slice(_historyOffset, _historyOffset + HISTORY_LIMIT);
   document.getElementById('history-table-body').innerHTML = items.length
-    ? items.map(r => `<tr>
+    ? items.map(r => `<tr class="history-row" onclick="showHistoryDetail(${r.id})">
         <td class="mono dim nowrap">${esc((r.timestamp || '').replace('T', ' ').replace('Z', ''))}</td>
         <td>${modelChip(r.model)}</td>
         <td><div class="prompt-preview" title="${esc(r.prompt_preview || '')}">${esc(r.prompt_preview || '—')}</div></td>
         <td class="num">${(r.prompt_tokens || 0).toLocaleString()}</td>
         <td class="num">${(r.completion_tokens || 0).toLocaleString()}</td>
+        <td class="num">${r.tps != null ? r.tps + ' t/s' : '—'}</td>
         <td>${r.status === 'ok' ? '<span class="badge badge-ok">ok</span>' : `<span class="badge badge-err">${esc(r.status)}</span>`}</td>
       </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="6">No requests match your filters.</td></tr>';
+    : '<tr class="empty-row"><td colspan="7">No requests match your filters.</td></tr>';
   document.getElementById('history-page-info').textContent = total
     ? `${_historyOffset + 1}–${Math.min(_historyOffset + items.length, total)} of ${total}`
     : '0 of 0';
   document.getElementById('history-prev').disabled = _historyOffset === 0;
   document.getElementById('history-next').disabled = _historyOffset + HISTORY_LIMIT >= total;
+}
+
+/* ── History detail modal ────────────────────────────────────── */
+const ROLE_COLOR = { system: '#f59e0b', user: '#60a5fa', assistant: '#34d399', tool: '#a78bfa' };
+
+async function showHistoryDetail(id) {
+  const overlay = document.getElementById('req-detail-overlay');
+  document.getElementById('req-detail-body').innerHTML = '<div class="detail-loading">Loading…</div>';
+  overlay.classList.add('open');
+  try {
+    const resp = await api(`/usage/history/${id}`);
+    if (!resp.ok) throw new Error(resp.status);
+    renderHistoryDetail(await resp.json());
+  } catch {
+    document.getElementById('req-detail-body').innerHTML =
+      '<div class="detail-empty" style="color:var(--red)">Failed to load request detail.</div>';
+  }
+}
+
+function closeHistoryDetail() {
+  document.getElementById('req-detail-overlay').classList.remove('open');
+}
+
+function _msgContent(m) {
+  if (typeof m.content === 'string') return esc(m.content);
+  if (Array.isArray(m.content)) {
+    return m.content.map(p =>
+      p.type === 'text'
+        ? esc(p.text || '')
+        : `<span class="content-type-tag">[${esc(p.type || 'part')}]</span>`
+    ).join('');
+  }
+  if (m.tool_calls) {
+    return `<span class="content-type-tag">[tool_calls]</span>\n` +
+      esc(JSON.stringify(m.tool_calls, null, 2));
+  }
+  return '<span class="detail-empty">—</span>';
+}
+
+function renderHistoryDetail(d) {
+  const raw = d.completion_content || '';
+  const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/);
+  const reasoning  = thinkMatch ? thinkMatch[1].trim() : '';
+  const completion = raw.replace(/<think>[\s\S]*?<\/think>\n*/g, '').trim();
+
+  const streamPill = d.stream
+    ? '<span class="pill pill-stream">streaming</span>'
+    : '<span class="pill pill-nostream">non-stream</span>';
+  const statusBadge = d.status === 'ok'
+    ? '<span class="badge badge-ok">ok</span>'
+    : `<span class="badge badge-err">${esc(d.status)}</span>`;
+
+  const messagesHtml = (d.prompt_messages || []).map(m => {
+    const role  = m.role || 'unknown';
+    const color = ROLE_COLOR[role] || '#7d8694';
+    return `<div class="role-block" style="border-left-color:${color}">
+      <span class="role-label" style="color:${color}">${esc(role)}</span>
+      <pre class="role-content">${_msgContent(m)}</pre>
+    </div>`;
+  }).join('') || '<div class="detail-empty">No message data recorded</div>';
+
+  let html = `
+    <div class="detail-meta">
+      ${modelChip(d.model)}
+      ${statusBadge}
+      ${streamPill}
+      <span class="mono dim" style="font-size:0.78rem">${esc((d.timestamp || '').replace('T',' ').replace('Z',' UTC'))}</span>
+    </div>
+    <div class="detail-metrics">
+      <div class="metric-item">
+        <span class="metric-label">Latency</span>
+        <span class="metric-val">${d.duration_ms != null ? d.duration_ms.toLocaleString() + ' ms' : '—'}</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Speed</span>
+        <span class="metric-val">${d.tps != null ? d.tps + ' tok/s' : '—'}</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Finish</span>
+        <span class="metric-val">${esc(d.finish_reason || '—')}</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Tokens</span>
+        <span class="metric-val">${(d.prompt_tokens||0).toLocaleString()} + ${(d.completion_tokens||0).toLocaleString()} = ${(d.total_tokens||0).toLocaleString()}</span>
+      </div>
+    </div>
+    <div class="detail-section"><span class="detail-section-label">Prompt</span></div>
+    <div class="detail-messages">${messagesHtml}</div>`;
+
+  if (completion) {
+    html += `<div class="detail-section"><span class="detail-section-label">Completion</span></div>
+    <pre class="detail-pre">${esc(completion)}</pre>`;
+  }
+  if (reasoning) {
+    html += `<div class="detail-section"><span class="detail-section-label">Reasoning</span></div>
+    <pre class="detail-pre detail-reasoning">${esc(reasoning)}</pre>`;
+  }
+  if (d.status !== 'ok' && d.error_detail) {
+    html += `<div class="detail-section"><span class="detail-section-label">Error</span></div>
+    <pre class="detail-pre detail-error">${esc(d.error_detail)}</pre>`;
+  }
+
+  document.getElementById('req-detail-body').innerHTML = html;
 }
 
 function historyPage(dir) {
@@ -608,6 +712,10 @@ async function boot() {
   renderUsage();
   showSection('usage');
 }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeHistoryDetail();
+});
 
 document.addEventListener('visibilitychange', () => {
   const s = _activeSection();

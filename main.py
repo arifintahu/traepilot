@@ -13,14 +13,27 @@ from pydantic import BaseModel
 
 from config import BIND_HOST, BIND_PORT, API_KEY, DASHBOARD_PASSWORD, SESSION_MAX_AGE
 from trae_client import stream_completion, non_stream_completion, list_models
-from usage import init_db, record_usage, get_stats, get_history, get_daily
+from usage import init_db, record_usage, get_stats, get_history, get_history_detail, get_daily, purge_old_requests
 import session_auth
 from session_auth import mint_session, verify_session, check_rate_limit, record_failure, clear_failures
+
+
+async def _purge_loop() -> None:
+    """Delete usage_requests rows older than 30 days; runs at startup then every 24 h."""
+    while True:
+        try:
+            deleted = await asyncio.to_thread(purge_old_requests, 30)
+            if deleted:
+                print(f"[traepilot] purged {deleted} request log row(s) older than 30 days")
+        except Exception as exc:
+            print(f"[traepilot] purge error (non-fatal): {exc}")
+        await asyncio.sleep(24 * 60 * 60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    asyncio.create_task(_purge_loop())
     # Warn if the proxy is accessible on a non-local interface without any auth.
     _local = ("127.0.0.1", "localhost", "::1")
     if BIND_HOST not in _local and not API_KEY and not DASHBOARD_PASSWORD:
@@ -33,7 +46,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="TraePilot", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="TraePilot", version="0.3.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 security = HTTPBearer(auto_error=False)
 
@@ -127,6 +140,9 @@ async def chat_completions(req: ChatCompletionRequest, _: None = Depends(require
         async def event_stream():
             accumulated = []
             status = "ok"
+            error_detail = None
+            finish_reason = None
+            start_time = time.perf_counter()
             try:
                 async for chunk in stream_completion(
                     messages, req.model, req.max_tokens,
@@ -137,35 +153,57 @@ async def chat_completions(req: ChatCompletionRequest, _: None = Depends(require
                         break
                     yield chunk
                     try:
-                        delta = json.loads(chunk[6:])["choices"][0]["delta"]
+                        parsed = json.loads(chunk[6:])
+                        choice = parsed["choices"][0]
+                        delta = choice.get("delta", {})
                         text = delta.get("content") or ""
                         if text:
                             accumulated.append(text)
+                        fr = choice.get("finish_reason")
+                        if fr:
+                            finish_reason = fr
                     except Exception:
                         pass
                 else:
                     status = "error"
             except Exception as e:
                 status = "error"
-                err = {"error": {"message": str(e), "type": "upstream_error"}}
+                error_detail = str(e)
+                err = {"error": {"message": error_detail, "type": "upstream_error"}}
                 yield f"data: {json.dumps(err)}\n\n"
             finally:
+                duration_ms = int((time.perf_counter() - start_time) * 1000)
                 await record_usage(
-                    req.model, messages, "".join(accumulated), status, True
+                    req.model, messages, "".join(accumulated), status, True,
+                    duration_ms=duration_ms,
+                    error_detail=error_detail,
+                    finish_reason=finish_reason,
                 )
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+    start_time = time.perf_counter()
     try:
         result = await non_stream_completion(
             messages, req.model, req.max_tokens,
             tools=req.tools, tool_choice=req.tool_choice,
         )
     except Exception as e:
-        await record_usage(req.model, messages, "", "error", False)
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        await record_usage(
+            req.model, messages, "", "error", False,
+            duration_ms=duration_ms,
+            error_detail=str(e),
+        )
         raise HTTPException(status_code=502, detail=str(e))
 
+    duration_ms = int((time.perf_counter() - start_time) * 1000)
     output_text = result["choices"][0]["message"].get("content") or ""
-    await record_usage(req.model, messages, output_text, "ok", False)
+    finish_reason = result["choices"][0].get("finish_reason", "stop")
+    await record_usage(
+        req.model, messages, output_text, "ok", False,
+        duration_ms=duration_ms,
+        finish_reason=finish_reason,
+    )
     return JSONResponse(result)
 
 
@@ -191,6 +229,17 @@ async def usage_history(
     return get_history(limit, offset)
 
 
+@usage_router.get("/history/{request_id}")
+async def usage_history_detail(
+    request_id: int,
+    _: None = Depends(require_auth),
+):
+    item = get_history_detail(request_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return item
+
+
 @usage_router.get("/daily")
 async def usage_daily(
     days: int = Query(default=30, ge=1, le=365),
@@ -211,8 +260,6 @@ _MASKED = "••••••"
 
 
 def _mask(key: str) -> str:
-    # Returns "(not set)" vs "••••••" intentionally — callers can tell whether a
-    # key is configured without seeing its value. Auth required to reach this endpoint.
     val = os.getenv(key, "")
     if not val:
         return "(not set)"
@@ -226,7 +273,7 @@ async def get_config(
     return {
         "TRAE_BASE_URL":         os.getenv("TRAE_BASE_URL", "https://coresg-normal.trae.ai"),
         "BIND_HOST":             os.getenv("BIND_HOST", "127.0.0.1"),
-        "BIND_PORT":             BIND_PORT,  # already int from config.py
+        "BIND_PORT":             BIND_PORT,
         "API_KEY":               _mask("API_KEY"),
         "DASHBOARD_PASSWORD":    _mask("DASHBOARD_PASSWORD"),
         "TRAE_EXCLUDE_MODELS":   os.getenv("TRAE_EXCLUDE_MODELS", "claude3.5,aws_sdk_claude37_sonnet"),
@@ -243,12 +290,6 @@ async def get_config(
         "TRAE_PLUGIN_CHANNEL":   os.getenv("TRAE_PLUGIN_CHANNEL", "icube-ai"),
     }
 
-
-# ── Auth endpoints ─────────────────────────────────────────────────────────────
-
-# CSRF note: all cookie-authed endpoints are GET reads; the login POST is a
-# shared-password form (not per-user tokens), so login CSRF would only let an
-# attacker log someone in — not extract data.  Therefore no CSRF token is needed.
 
 class _LoginBody(BaseModel):
     password: str

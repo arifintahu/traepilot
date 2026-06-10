@@ -137,7 +137,7 @@
           </div>
         </div>
         <table aria-label="Request history">
-          <thead><tr><th>Time</th><th>Model</th><th>Prompt Preview</th><th class="num">Prompt</th><th class="num">Completion</th><th>Status</th></tr></thead>
+          <thead><tr><th>Time</th><th>Model</th><th>Prompt Preview</th><th class="num">Prompt</th><th class="num">Completion</th><th class="num">Speed</th><th>Status</th></tr></thead>
           <tbody id="history-table-body"></tbody>
         </table>
         <div class="pagination">
@@ -204,6 +204,17 @@
            onkeydown="if(event.key==='Enter')submitLogin()">
     <button class="auth-btn" onclick="submitLogin()">Continue</button>
     <div class="auth-error" id="auth-error" aria-live="polite"></div>
+  </div>
+</div>
+
+<!-- Request detail modal -->
+<div id="req-detail-overlay" class="modal-overlay" onclick="closeHistoryDetail()" role="dialog" aria-modal="true" aria-label="Request detail">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <span class="modal-title">Request Detail</span>
+      <button class="modal-close" onclick="closeHistoryDetail()" aria-label="Close">✕</button>
+    </div>
+    <div id="req-detail-body" class="modal-body"></div>
   </div>
 </div>
 
