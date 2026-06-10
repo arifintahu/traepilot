@@ -4,10 +4,13 @@ usage.py — SQLite-backed request usage tracking for TraePilot.
 Public API:
   init_db()                                         → None   (call once at startup)
   record_usage(model, messages, output_text,        → None   (async, call after each request)
-               status, stream)
+               status, stream, *, duration_ms,
+               error_detail, finish_reason)
   get_stats(period="24h")                           → dict
   get_history(limit=50, offset=0)                   → dict
+  get_history_detail(request_id)                    → dict | None
   get_daily(days=30)                                → dict
+  purge_old_requests(days=30)                       → int    (rows deleted)
 
 Token counts are estimated via the ÷4 char heuristic and marked estimated=True.
 DB file defaults to usage.db; override with USAGE_DB env var.
@@ -26,7 +29,7 @@ def _db_path() -> str:
 
 
 def init_db() -> None:
-    """Create tables and indexes if they don't exist. Safe to call multiple times."""
+    """Create tables, indexes, and run column migrations. Safe to call multiple times."""
     with sqlite3.connect(_db_path()) as conn:
         conn.executescript("""
             PRAGMA journal_mode = WAL;
@@ -55,6 +58,18 @@ def init_db() -> None:
                 total_tokens      INTEGER DEFAULT 0
             );
         """)
+        # Backward-compatible column additions for existing databases
+        for col, defn in [
+            ("duration_ms",        "INTEGER"),
+            ("error_detail",       "TEXT"),
+            ("finish_reason",      "TEXT"),
+            ("prompt_messages",    "TEXT"),
+            ("completion_content", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE usage_requests ADD COLUMN {col} {defn}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def _estimate_tokens_in(messages: list) -> int:
@@ -80,7 +95,14 @@ def _prompt_preview(messages: list) -> str:
 
 
 def _record_usage_sync(
-    model: str, messages: list, output_text: str, status: str, stream: bool
+    model: str,
+    messages: list,
+    output_text: str,
+    status: str,
+    stream: bool,
+    duration_ms: int | None = None,
+    error_detail: str | None = None,
+    finish_reason: str | None = None,
 ) -> None:
     """Synchronous write — run via asyncio.to_thread so it doesn't block the event loop."""
     prompt_tokens     = _estimate_tokens_in(messages)
@@ -97,11 +119,17 @@ def _record_usage_sync(
             """
             INSERT INTO usage_requests
                 (timestamp, model, prompt_tokens, completion_tokens,
-                 total_tokens, prompt_preview, status, stream)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 total_tokens, prompt_preview, status, stream,
+                 duration_ms, error_detail, finish_reason,
+                 prompt_messages, completion_content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (timestamp, model, prompt_tokens, completion_tokens,
-             total_tokens, preview, status, 1 if stream else 0),
+            (
+                timestamp, model, prompt_tokens, completion_tokens,
+                total_tokens, preview, status, 1 if stream else 0,
+                duration_ms, error_detail, finish_reason,
+                json.dumps(messages), output_text or None,
+            ),
         )
         conn.execute(
             """
@@ -119,12 +147,28 @@ def _record_usage_sync(
 
 
 async def record_usage(
-    model: str, messages: list, output_text: str, status: str, stream: bool
+    model: str,
+    messages: list,
+    output_text: str,
+    status: str,
+    stream: bool,
+    *,
+    duration_ms: int | None = None,
+    error_detail: str | None = None,
+    finish_reason: str | None = None,
 ) -> None:
     """Async wrapper: runs the SQLite write in a thread pool."""
     await asyncio.to_thread(
-        _record_usage_sync, model, messages, output_text, status, stream
+        _record_usage_sync,
+        model, messages, output_text, status, stream,
+        duration_ms, error_detail, finish_reason,
     )
+
+
+def _tps(completion_tokens: int, duration_ms: int | None) -> float | None:
+    if duration_ms and duration_ms > 0:
+        return round(completion_tokens / (duration_ms / 1000), 1)
+    return None
 
 
 def get_stats(period: str = "24h") -> dict:
@@ -204,7 +248,7 @@ def get_history(limit: int = 50, offset: int = 0) -> dict:
         rows = conn.execute(
             """
             SELECT id, timestamp, model, prompt_tokens, completion_tokens,
-                   total_tokens, prompt_preview, status, stream
+                   total_tokens, prompt_preview, status, stream, duration_ms
             FROM usage_requests
             ORDER BY id DESC
             LIMIT ? OFFSET ?
@@ -228,9 +272,56 @@ def get_history(limit: int = 50, offset: int = 0) -> dict:
                 "prompt_preview":    row["prompt_preview"],
                 "status":            row["status"],
                 "stream":            bool(row["stream"]),
+                "duration_ms":       row["duration_ms"],
+                "tps":               _tps(row["completion_tokens"], row["duration_ms"]),
             }
             for row in rows
         ],
+    }
+
+
+def get_history_detail(request_id: int) -> dict | None:
+    """Return a single request row with full detail fields, or None if not found."""
+    with sqlite3.connect(_db_path()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT id, timestamp, model, prompt_tokens, completion_tokens,
+                   total_tokens, prompt_preview, status, stream,
+                   duration_ms, error_detail, finish_reason,
+                   prompt_messages, completion_content
+            FROM usage_requests
+            WHERE id = ?
+            """,
+            (request_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    messages = None
+    if row["prompt_messages"]:
+        try:
+            messages = json.loads(row["prompt_messages"])
+        except (json.JSONDecodeError, TypeError):
+            messages = None
+
+    return {
+        "id":                 row["id"],
+        "timestamp":          row["timestamp"],
+        "model":              row["model"],
+        "prompt_tokens":      row["prompt_tokens"],
+        "completion_tokens":  row["completion_tokens"],
+        "total_tokens":       row["total_tokens"],
+        "status":             row["status"],
+        "stream":             bool(row["stream"]),
+        "duration_ms":        row["duration_ms"],
+        "tps":                _tps(row["completion_tokens"], row["duration_ms"]),
+        "finish_reason":      row["finish_reason"],
+        "error_detail":       row["error_detail"],
+        "prompt_messages":    messages,
+        "completion_content": row["completion_content"],
+        "estimated":          True,
     }
 
 
@@ -263,3 +354,14 @@ def get_daily(days: int = 30) -> dict:
             for row in rows
         ],
     }
+
+
+def purge_old_requests(days: int = 30) -> int:
+    """Delete usage_requests rows older than `days` days. Returns count of deleted rows.
+
+    usage_daily is intentionally NOT touched — aggregated stats are preserved.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with sqlite3.connect(_db_path()) as conn:
+        cur = conn.execute("DELETE FROM usage_requests WHERE timestamp < ?", (cutoff,))
+        return cur.rowcount
