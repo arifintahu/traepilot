@@ -1,5 +1,4 @@
 import secrets
-from typing import Optional
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from config import API_KEY, DASHBOARD_PASSWORD
