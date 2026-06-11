@@ -13,12 +13,15 @@ def client(tmp_path, monkeypatch):
         monkeypatch.setenv(_key, "")
     monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
-    import config, session_auth, main
+    import config, session_auth, deps, routes_openai, routes_dashboard, main
     importlib.reload(config)
     # Explicitly zero the config attributes in case load_dotenv still read .env.
     config.API_KEY = ""
     config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app
     return TestClient(app)
@@ -32,10 +35,13 @@ def authed_client(tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "")
     monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
-    import config, session_auth, main
+    import config, session_auth, deps, routes_openai, routes_dashboard, main
     importlib.reload(config)
     config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app
     return TestClient(app)
@@ -49,11 +55,14 @@ def dash_client(tmp_path, monkeypatch):
     monkeypatch.setenv("API_KEY", "")
     monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
-    import config, session_auth, main
+    import config, session_auth, deps, routes_openai, routes_dashboard, main
     importlib.reload(config)
     config.API_KEY = ""
     importlib.reload(session_auth)
     monkeypatch.setattr(session_auth, "FAILURE_DELAY", 0)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app
     # Use context-manager form so lifespan runs (init_db creates the tables)
@@ -91,11 +100,14 @@ def test_config_masks_sensitive_fields_when_set(tmp_path, monkeypatch):
     monkeypatch.setenv("TRAE_IDE_TOKEN", "secret-token")
     monkeypatch.setenv("TRAE_MACHINE_ID", "machine-abc")
     monkeypatch.setenv("TRAE_DEVICE_ID", "device-xyz")
-    import importlib, config, session_auth, main
+    import importlib, config, session_auth, deps, routes_openai, routes_dashboard, main
     importlib.reload(config)
     config.API_KEY = ""
     config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app
     c = TestClient(app)
@@ -239,9 +251,12 @@ def test_bearer_still_works_alongside_password(tmp_path, monkeypatch):
     monkeypatch.setenv("API_KEY", "testkey")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "testpass")
     import importlib
-    import config, session_auth, main
+    import config, session_auth, deps, routes_openai, routes_dashboard, main
     importlib.reload(config)
     importlib.reload(session_auth)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app
     from fastapi.testclient import TestClient
@@ -275,10 +290,13 @@ def test_chat_completions_requires_bearer_when_api_key_set(tmp_path, monkeypatch
     monkeypatch.setenv("DASHBOARD_PASSWORD", "")
     monkeypatch.setenv("SESSION_SECRET", "test-secret")
     import importlib
-    import config, session_auth, main
+    import config, session_auth, deps, routes_openai, routes_dashboard, main
     importlib.reload(config)
     config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app
     from fastapi.testclient import TestClient
@@ -296,6 +314,9 @@ def test_chat_completions_requires_bearer_when_api_key_set(tmp_path, monkeypatch
     config.API_KEY = ""
     config.DASHBOARD_PASSWORD = ""
     importlib.reload(session_auth)
+    importlib.reload(deps)
+    importlib.reload(routes_openai)
+    importlib.reload(routes_dashboard)
     importlib.reload(main)
     from main import app as app2
     c2 = TestClient(app2, raise_server_exceptions=False)

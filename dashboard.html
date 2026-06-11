@@ -23,28 +23,23 @@
 
   <div class="nav">
     <div class="nav-sec">Monitor</div>
-    <div class="nav-item active" data-section="usage" onclick="showSection('usage')" role="button" tabindex="0"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('usage')}">
+    <div class="nav-item active" data-section="usage" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Usage
     </div>
-    <div class="nav-item" data-section="history" onclick="showSection('history')" role="button" tabindex="0"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('history')}">
+    <div class="nav-item" data-section="history" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.05 11a9 9 0 11.5 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 16v-4H7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>History
     </div>
 
     <div class="nav-sec">API</div>
-    <div class="nav-item" data-section="models" onclick="showSection('models')" role="button" tabindex="0"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('models')}">
+    <div class="nav-item" data-section="models" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Models
     </div>
-    <div class="nav-item" data-section="testchat" onclick="showSection('testchat')" role="button" tabindex="0"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('testchat')}">
+    <div class="nav-item" data-section="testchat" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Test Chat
     </div>
 
     <div class="nav-sec">System</div>
-    <div class="nav-item" data-section="config" onclick="showSection('config')" role="button" tabindex="0"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showSection('config')}">
+    <div class="nav-item" data-section="config" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 005 19.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 002.6 15H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8.3l-.1-.1a2 2 0 112.8-2.8l.1.1A1.6 1.6 0 009 5.6V5a2 2 0 114 0v.1A1.6 1.6 0 0019 4.6l-.1.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.1 2.7H21a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Config
     </div>
   </div>
@@ -53,7 +48,7 @@
     <span id="status-dot" class="dot"></span>
     <span id="status-label" class="foot-label">Connecting…</span>
     <span class="foot-ver">v1.0</span>
-    <button class="btn-logout" onclick="logout()" title="Log out">⎋</button>
+    <button class="btn-logout" title="Log out">⎋</button>
   </div>
 </nav>
 
@@ -66,10 +61,10 @@
     </div>
     <div class="topbar-right">
       <div id="period-tabs" class="period-tabs" role="tablist" aria-label="Time period">
-        <button class="ptab active" data-period="24h" role="tab" aria-selected="true"  onclick="setPeriod('24h')">24h</button>
-        <button class="ptab"        data-period="7d"  role="tab" aria-selected="false" onclick="setPeriod('7d')">7d</button>
-        <button class="ptab"        data-period="30d" role="tab" aria-selected="false" onclick="setPeriod('30d')">30d</button>
-        <button class="ptab"        data-period="all" role="tab" aria-selected="false" onclick="setPeriod('all')">All</button>
+        <button class="ptab active" data-period="24h" role="tab" aria-selected="true">24h</button>
+        <button class="ptab"        data-period="7d"  role="tab" aria-selected="false">7d</button>
+        <button class="ptab"        data-period="30d" role="tab" aria-selected="false">30d</button>
+        <button class="ptab"        data-period="all" role="tab" aria-selected="false">All</button>
       </div>
       <div id="topbar-action"></div>
     </div>
@@ -81,7 +76,7 @@
     <section id="section-usage" class="section active" aria-label="Usage statistics">
       <div id="usage-err" class="err-banner" role="alert">
         <span>⚠ Failed to load usage data</span>
-        <button onclick="renderUsage()">Retry</button>
+        <button>Retry</button>
       </div>
       <div class="stat-grid" id="stat-grid"></div>
       <div class="panel">
@@ -113,7 +108,7 @@
     <section id="section-history" class="section" aria-label="Request history">
       <div id="history-err" class="err-banner" role="alert">
         <span>⚠ Failed to load history</span>
-        <button onclick="loadHistory()">Retry</button>
+        <button>Retry</button>
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -121,30 +116,30 @@
           <div class="history-controls">
             <div class="search-wrap">
               <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-              <input id="history-search" class="search-input" type="text" placeholder="Search prompts or models…" oninput="onHistoryFilter()" aria-label="Search history">
+              <input id="history-search" class="search-input" type="text" placeholder="Search prompts or models…" aria-label="Search history">
             </div>
             <div class="select-wrap filter-select-wrap">
-              <select id="history-model" class="filter-select" aria-label="Filter by model" onchange="onHistoryFilter()">
+              <select id="history-model" class="filter-select" aria-label="Filter by model">
                 <option value="all">All models</option>
               </select>
               <svg viewBox="0 0 10 10" fill="currentColor"><path d="M5 7L0 2h10z"/></svg>
             </div>
             <div class="filter-tabs" role="group" aria-label="Filter by status">
-              <button class="ftab active" data-status="all"   onclick="setHistoryStatus('all')">All</button>
-              <button class="ftab"        data-status="ok"    onclick="setHistoryStatus('ok')">OK</button>
-              <button class="ftab"        data-status="error" onclick="setHistoryStatus('error')">Errors</button>
+              <button class="ftab active" data-status="all">All</button>
+              <button class="ftab"        data-status="ok">OK</button>
+              <button class="ftab"        data-status="error">Errors</button>
             </div>
           </div>
         </div>
         <table aria-label="Request history">
-          <thead><tr><th>Time</th><th>Model</th><th>Prompt Preview</th><th class="num">Prompt</th><th class="num">Completion</th><th class="num">Speed</th><th>Status</th></tr></thead>
+          <thead><tr><th>Time</th><th>Model</th><th>Prompt Preview</th><th class="num">Prompt</th><th class="num">Completion</th><th class="num">Speed</th><th>Finish</th><th>Status</th></tr></thead>
           <tbody id="history-table-body"></tbody>
         </table>
         <div class="pagination">
           <div class="page-info" id="history-page-info">—</div>
           <div class="page-btns">
-            <button class="page-btn" id="history-prev" onclick="historyPage(-1)" disabled>← Prev</button>
-            <button class="page-btn" id="history-next" onclick="historyPage(1)"  disabled>Next →</button>
+            <button class="page-btn" id="history-prev" disabled>← Prev</button>
+            <button class="page-btn" id="history-next" disabled>Next →</button>
           </div>
         </div>
       </div>
@@ -154,7 +149,7 @@
     <section id="section-models" class="section" aria-label="Available models">
       <div id="models-err" class="err-banner" role="alert">
         <span>⚠ Failed to load models</span>
-        <button onclick="loadModels()">Retry</button>
+        <button>Retry</button>
       </div>
       <div id="model-grid" class="model-grid"></div>
     </section>
@@ -169,7 +164,7 @@
             <svg viewBox="0 0 10 10" fill="currentColor"><path d="M5 7L0 2h10z"/></svg>
           </div>
           <p class="test-desc">Sends <code>"Hello! Are you working?"</code> to the selected model and shows the raw response.</p>
-          <button id="run-btn" class="btn-run" onclick="runTest()">
+          <button id="run-btn" class="btn-run">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg>Run Test
           </button>
           <div id="result-box" class="result-box" role="status" aria-live="polite"></div>
@@ -181,7 +176,7 @@
     <section id="section-config" class="section" aria-label="Configuration">
       <div id="config-err" class="err-banner" role="alert">
         <span>⚠ Failed to load config</span>
-        <button onclick="loadConfig()">Retry</button>
+        <button>Retry</button>
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -200,24 +195,23 @@
   <div class="auth-box">
     <div class="auth-title" id="auth-title">Dashboard Login</div>
     <div class="auth-sub">Enter the dashboard password to continue.</div>
-    <input class="auth-input" id="auth-input" type="password" placeholder="Password…" autocomplete="current-password"
-           onkeydown="if(event.key==='Enter')submitLogin()">
-    <button class="auth-btn" onclick="submitLogin()">Continue</button>
+    <input class="auth-input" id="auth-input" type="password" placeholder="Password…" autocomplete="current-password">
+    <button class="auth-btn" id="auth-btn">Continue</button>
     <div class="auth-error" id="auth-error" aria-live="polite"></div>
   </div>
 </div>
 
 <!-- Request detail modal -->
-<div id="req-detail-overlay" class="modal-overlay" onclick="closeHistoryDetail()" role="dialog" aria-modal="true" aria-label="Request detail">
+<div id="req-detail-overlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Request detail">
   <div class="modal-card" onclick="event.stopPropagation()">
     <div class="modal-head">
       <span class="modal-title">Request Detail</span>
-      <button class="modal-close" onclick="closeHistoryDetail()" aria-label="Close">✕</button>
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">✕</button>
     </div>
     <div id="req-detail-body" class="modal-body"></div>
   </div>
 </div>
 
-<script src="/static/dashboard.js"></script>
+<script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

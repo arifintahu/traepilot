@@ -1,20 +1,17 @@
 import json
 import logging
-import re
 import time
 import uuid
 import httpx
 from config import TRAE_BASE_URL, TRAE_HEADERS, EXCLUDE_MODELS
+from tool_calls import (
+    _extract_tool_calls, _prepare_messages,
+)
 
 logger = logging.getLogger("traepilot")
 
-# Trae's chat-scene endpoint: a prompt-pipeline protocol that streams named SSE
-# events (output / done / error), not OpenAI SSE. Request format derived from the
-# (archived) trae2api project and verified against the live API.
 CHAT_ENDPOINT = "/api/ide/v1/chat"
 
-# Exact model IDs → capabilities (matched case-insensitively).
-# New models not in this map default to ["streaming"].
 _CAPABILITIES: dict[str, list[str]] = {
     "gemini-2.5-pro-preview-03-25": ["tools", "streaming", "reasoning"],
     "gemini_2.5_flash":             ["tools", "streaming", "reasoning"],
@@ -54,8 +51,6 @@ def build_trae_payload(messages: list, model: str) -> dict:
     def as_text(content) -> str:
         return content if isinstance(content, str) else str(content)
 
-    # Trae's chat endpoint does not forward system-role messages to the model.
-    # Extract them and prepend their content to user_input so the model sees them.
     system_parts: list[str] = []
     chat_messages: list[dict] = []
     for m in messages:
@@ -63,7 +58,7 @@ def build_trae_payload(messages: list, model: str) -> dict:
             system_parts.append(as_text(m["content"]))
         else:
             chat_messages.append(m)
-    if not chat_messages:          # safety: all messages were system — keep as-is
+    if not chat_messages:
         chat_messages = list(messages)
         system_parts = []
 
@@ -140,9 +135,7 @@ async def _trae_chat_events(messages: list, model: str):
 
 
 def _delta(reasoning: str, response: str, think_open: list) -> str:
-    """Build one content delta, wrapping reasoning_content in <think></think>.
-    Note: Trae's API currently streams all content in the 'response' field;
-    'reasoning_content' is supported here for forward compatibility."""
+    """Build one content delta, wrapping reasoning_content in <think></think>."""
     out = ""
     if reasoning:
         out += ("<think>\n" + reasoning) if not think_open[0] else reasoning
@@ -153,162 +146,6 @@ def _delta(reasoning: str, response: str, think_open: list) -> str:
     return out
 
 
-def _convert_tool_messages(messages: list) -> list:
-    """Convert tool-role and tool_calls messages to plain text for Trae's format."""
-    out = []
-    for m in messages:
-        role = m.get("role")
-        if role == "tool":
-            tid = m.get("tool_call_id", "")
-            out.append({"role": "user", "content": f"[Tool result for {tid}: {m.get('content', '')}]"})
-        elif role == "assistant" and m.get("tool_calls"):
-            text_preamble = m.get("content") or ""
-            parts = [text_preamble] if text_preamble else []
-            for tc in m["tool_calls"]:
-                fn = tc.get("function", {})
-                parts.append(f"[Called: {fn.get('name', '')}({fn.get('arguments', '')})]")
-            out.append({"role": "assistant", "content": "\n".join(parts)})
-        else:
-            out.append({"role": role, "content": m.get("content") or ""})
-    return out
-
-
-def _build_tools_system_prompt(tools: list, tool_choice) -> str:
-    """Build a system prompt that instructs the model to respond with a JSON tool call."""
-    tool_defs = json.dumps(tools, indent=2)
-    prompt = (
-        "You have access to the following functions. "
-        "When you want to call a function, respond ONLY with a JSON object — no other text:\n"
-        '{"tool_calls": [{"id": "call_<id>", "type": "function", '
-        '"function": {"name": "<name>", "arguments": "<json-escaped-args>"}}]}\n\n'
-        f"Available functions:\n{tool_defs}"
-    )
-    if tool_choice == "required":
-        prompt += "\n\nYou MUST call a function. Do not reply with plain text."
-    return prompt
-
-
-# Models often disobey the "respond ONLY with JSON" instruction and embed the
-# tool-call object after prose, inside backticks, or cut off mid-stream.
-_TOOL_CALL_START = re.compile(r'\{\s*"tool_calls"\s*:')
-_FENCE_BEFORE = re.compile(r"(?:```(?:json)?|`)\s*$")
-_FENCE_AFTER = re.compile(r"^\s*(?:```(?:json)?|`)")
-
-
-def _validate_tool_calls(obj) -> list | None:
-    """Return the normalized tool_calls list from a parsed object, else None."""
-    calls = obj.get("tool_calls") if isinstance(obj, dict) else None
-    if not isinstance(calls, list) or not calls:
-        return None
-    for call in calls:
-        if not isinstance(call, dict) or "function" not in call:
-            return None
-        if "id" not in call:
-            call["id"] = f"call_{uuid.uuid4().hex[:8]}"
-        call.setdefault("type", "function")
-    return calls
-
-
-def _find_balanced_json(text: str, start: int) -> tuple[int, list, bool]:
-    """Scan a JSON value from text[start] == '{', tracking strings and escapes.
-    Returns (end_index_exclusive, open_stack, in_string); end is -1 if the
-    text runs out before the object balances (truncated output)."""
-    stack: list[str] = []
-    in_str = esc = False
-    for i in range(start, len(text)):
-        c = text[i]
-        if in_str:
-            if esc:
-                esc = False
-            elif c == "\\":
-                esc = True
-            elif c == '"':
-                in_str = False
-        elif c == '"':
-            in_str = True
-        elif c in "{[":
-            stack.append(c)
-        elif c in "}]":
-            if stack:
-                stack.pop()
-            if not stack:
-                return i + 1, stack, False
-    return -1, stack, in_str
-
-
-def _repair_json(fragment: str, open_stack: list, in_string: bool) -> str:
-    """Close an unterminated string, drop a trailing comma, and append the
-    missing closers so a truncated tool-call object becomes parseable."""
-    repaired = fragment
-    if in_string:
-        repaired += '"'
-    repaired = repaired.rstrip()
-    if repaired.endswith(","):
-        repaired = repaired[:-1]
-    for opener in reversed(open_stack):
-        repaired += "}" if opener == "{" else "]"
-    return repaired
-
-
-def _extract_tool_calls(text: str) -> tuple[str, list | None]:
-    """Extract tool-call JSON from anywhere in model output (after prose,
-    inside backticks/fences, or truncated). Returns (remaining_prose, calls);
-    calls is None and prose is the original text when nothing usable is found."""
-    stripped = text.strip()
-    # Fast path: the entire content is the JSON, optionally fence-wrapped
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        inner = "\n".join(lines[1:-1]).strip() if len(lines) > 2 else ""
-        if inner:
-            stripped = inner
-    try:
-        calls = _validate_tool_calls(json.loads(stripped))
-        if calls:
-            return "", calls
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    for m in _TOOL_CALL_START.finditer(text):
-        start = m.start()
-        end, stack, in_str = _find_balanced_json(text, start)
-        if end == -1:
-            candidate = _repair_json(text[start:], stack, in_str)
-            end = len(text)
-        else:
-            candidate = text[start:end]
-        try:
-            calls = _validate_tool_calls(json.loads(candidate))
-        except (json.JSONDecodeError, ValueError):
-            calls = None
-        if calls:
-            before = _FENCE_BEFORE.sub("", text[:start]).rstrip()
-            after = _FENCE_AFTER.sub("", text[end:]).strip()
-            prose = (before + "\n" + after).strip() if after else before.strip()
-            return prose, calls
-        logger.warning(
-            "tool_calls-like JSON could not be parsed or repaired; "
-            "passing content through unchanged: %r", text[start:end][:500],
-        )
-    return text, None
-
-
-def _parse_tool_call_response(text: str) -> list | None:
-    """Return parsed tool_calls found in text, else None (prose discarded)."""
-    return _extract_tool_calls(text)[1]
-
-
-def _prepare_messages(messages: list, tools: list | None, tool_choice) -> list:
-    """Inject tool system prompt and convert tool messages when tools are provided."""
-    if not tools:
-        return messages
-    converted = _convert_tool_messages(messages)
-    sys_content = _build_tools_system_prompt(tools, tool_choice)
-    if converted and converted[0]["role"] == "system":
-        converted[0] = {"role": "system", "content": sys_content + "\n\n" + converted[0]["content"]}
-        return converted
-    return [{"role": "system", "content": sys_content}] + converted
-
-
 async def stream_completion(
     messages: list, model: str, max_tokens: int | None = None,
     tools: list | None = None, tool_choice=None,
@@ -316,7 +153,6 @@ async def stream_completion(
     prep = _prepare_messages(messages, tools, tool_choice)
 
     if tools:
-        # Buffer full response — needed to detect if output is a tool call
         content, reasoning, finish_reason = "", "", "stop"
         async for event, data in _trae_chat_events(prep, model):
             if event == "output":
@@ -343,7 +179,6 @@ async def stream_completion(
         yield "[DONE]"
         return
 
-    # Original streaming path (no tools)
     think_open = [False]
     created = int(time.time())
     cid = f"chatcmpl-{created}"

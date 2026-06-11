@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "traepilot",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py"],
+      "port": 8787,
+      "autoPort": false
+    }
+  ]
+}
