@@ -48,9 +48,10 @@ if __name__ == "__main__":
     _base = f"http://{_host_disp}:{BIND_PORT}"
     _title = f"TraePilot  v{app.version}"
     _w = 46
-    print(f"\n  ┌{'─' * _w}┐")
-    print(f"  │  {_title:<{_w - 2}}│")
-    print(f"  └{'─' * _w}┘\n")
+    _bar = "-" * _w
+    print(f"\n  +{_bar}+")
+    print(f"  |  {_title:<{_w - 2}}|")
+    print(f"  +{_bar}+\n")
     print(f"  Proxy      {_base}/v1")
     print(f"  Dashboard  {_base}/dashboard\n")
     uvicorn.run("main:app", host=BIND_HOST, port=BIND_PORT, reload=False)
