@@ -181,7 +181,7 @@ Five sections via the sidebar:
 | Section | What it shows |
 |---|---|
 | **Usage** | Stat cards (requests, tokens) with sparklines, 7-day bar chart with hover tooltip, per-model breakdown table. Period tabs: 24h / 7d / 30d / All. |
-| **History** | Full request log — searchable by prompt/model, filterable by status (All / OK / Errors), model dropdown filter, paginated. |
+| **History** | Full request log — searchable by prompt/model, filterable by status (All / OK / Errors), model dropdown filter, paginated. Includes finish reason column (`stop` / `tool_calls` / `length`). |
 | **Models** | Live model list from Trae, grouped by provider (Gemini / OpenAI / DeepSeek) with color-coded avatar cards. Each card shows capability chips (⚙ tools · ⚡ stream · 🧠 reasoning). Copy model ID to clipboard. |
 | **Test Chat** | Send `"Hello! Are you working?"` to any model you select. Shows the raw response, model, and latency. |
 | **Config** | All env vars grouped into Connection / Device / IDE. Sensitive values (`API_KEY`, `TRAE_IDE_TOKEN`, `TRAE_MACHINE_ID`, `TRAE_DEVICE_ID`) are masked server-side — the real value is never sent to the browser. |
