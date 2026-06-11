@@ -42,9 +42,10 @@ export function renderHistory() {
         <td class="num">${(r.prompt_tokens || 0).toLocaleString()}</td>
         <td class="num">${(r.completion_tokens || 0).toLocaleString()}</td>
         <td class="num">${r.tps != null ? r.tps + ' t/s' : '—'}</td>
+        <td>${_finishChip(r.finish_reason)}</td>
         <td>${r.status === 'ok' ? '<span class="badge badge-ok">ok</span>' : `<span class="badge badge-err">${esc(r.status)}</span>`}</td>
       </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="7">No requests match your filters.</td></tr>';
+    : '<tr class="empty-row"><td colspan="8">No requests match your filters.</td></tr>';
   document.getElementById('history-page-info').textContent = total
     ? `${state.historyOffset + 1}–${Math.min(state.historyOffset + items.length, total)} of ${total}`
     : '0 of 0';
@@ -95,6 +96,14 @@ export function populateHistoryModels() {
   document.getElementById('history-model').innerHTML =
     '<option value="all">All models</option>' +
     unique.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+}
+
+function _finishChip(f) {
+  if (!f) return '<span class="mono dim">—</span>';
+  if (f === 'stop')       return '<span class="pill pill-nostream">stop</span>';
+  if (f === 'tool_calls') return '<span class="pill pill-stream">tool_calls</span>';
+  if (f === 'length')     return '<span class="pill pill-length">length</span>';
+  return `<span class="pill pill-nostream">${esc(f)}</span>`;
 }
 
 function _msgContent(m) {

@@ -248,7 +248,8 @@ def get_history(limit: int = 50, offset: int = 0) -> dict:
         rows = conn.execute(
             """
             SELECT id, timestamp, model, prompt_tokens, completion_tokens,
-                   total_tokens, prompt_preview, status, stream, duration_ms
+                   total_tokens, prompt_preview, status, stream, duration_ms,
+                   finish_reason
             FROM usage_requests
             ORDER BY id DESC
             LIMIT ? OFFSET ?
@@ -274,6 +275,7 @@ def get_history(limit: int = 50, offset: int = 0) -> dict:
                 "stream":            bool(row["stream"]),
                 "duration_ms":       row["duration_ms"],
                 "tps":               _tps(row["completion_tokens"], row["duration_ms"]),
+                "finish_reason":     row["finish_reason"],
             }
             for row in rows
         ],
