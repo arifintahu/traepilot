@@ -364,6 +364,76 @@ When Trae updates:
 
 ---
 
+## 🛠️ Troubleshooting
+
+### No models available / empty model list
+
+`GET /v1/models` returns `{"data": []}`.
+
+**Cause:** `TRAE_IDE_TOKEN` has expired. The token is a JWT valid for ~14 days. Once it expires, Trae's API rejects every request silently.
+
+**Fix:**
+```bash
+python auth.py --write   # extracts a fresh token from Trae's logs
+python main.py           # restart the proxy
+```
+
+Make sure Trae IDE is running and logged in before re-running `auth.py`. If it hasn't made a request recently, open a chat in Trae to generate a fresh log entry.
+
+---
+
+### 502 error on chat completions
+
+The proxy returns `502` when the upstream Trae API returns an error.
+
+| Common cause | Fix |
+|---|---|
+| Expired token | Run `python auth.py --write` and restart |
+| Wrong `TRAE_BASE_URL` | Run `python auth.py` (no `--write`) — it prints the correct base URL for your region |
+| Model not available for your account | Try a different model; check `/v1/models` for what's reachable |
+| Trae API down | Check Trae IDE directly; wait and retry |
+
+---
+
+### `auth.py` finds no credentials
+
+```
+No valid credentials found in Trae logs.
+```
+
+`auth.py` reads from Trae's completion log. This file is only written when Trae makes a real request.
+
+**Fix:** Open Trae IDE, trigger any chat or code completion, then re-run `python auth.py --write`.
+
+If Trae is installed but the log path isn't found, check the path manually:
+- **Windows:** `%APPDATA%\Trae\logs\`
+- **macOS:** `~/Library/Application Support/Trae/logs/`
+- **Linux:** `~/.config/Trae/logs/`
+
+---
+
+### Dashboard login fails / session expires on restart
+
+If `SESSION_SECRET` is not set, a random signing key is generated at startup — all session cookies are invalidated every time the proxy restarts.
+
+**Fix:** Set a persistent value in `.env`:
+```
+SESSION_SECRET=some-long-random-string
+```
+
+---
+
+### Token keeps expiring (recurring issue)
+
+The JWT lasts ~14 days. To refresh it:
+1. Open Trae IDE (make sure you're logged in)
+2. Run `python auth.py --write`
+3. Restart the proxy
+
+There is no automatic token refresh — Trae's token rotation requires a live IDE session.
+
+---
+
 ## 📄 License
 
 MIT — see [LICENSE](LICENSE)
