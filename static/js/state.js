@@ -11,6 +11,7 @@ export const state = {
   historySearch: '',
   historyModel: 'all',
   testing: false,
+  health: { status: 'unknown', detail: '' },
 };
 
 export const REFRESH_INTERVAL = 5000;

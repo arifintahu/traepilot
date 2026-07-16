@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import API_KEY, BIND_HOST, BIND_PORT, DASHBOARD_PASSWORD
 from usage import init_db, purge_old_requests
+from health import health_loop
 from routes_openai import router as openai_router
 from routes_dashboard import router as dashboard_router
 
@@ -25,6 +26,7 @@ async def _purge_loop() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     asyncio.create_task(_purge_loop())
+    asyncio.create_task(health_loop())
     _local = ("127.0.0.1", "localhost", "::1")
     if BIND_HOST not in _local and not API_KEY and not DASHBOARD_PASSWORD:
         print(

@@ -22,6 +22,10 @@ EXCLUDE_MODELS = {
     if m.strip()
 }
 
+# How often the background token health check runs (hours). Runtime-adjustable
+# from the dashboard; not persisted (mirrors the in-memory token overwrite).
+HEALTHCHECK_INTERVAL_HOURS = float(os.getenv("TRAE_HEALTHCHECK_INTERVAL_HOURS", "12"))
+
 _IDE_TOKEN = os.getenv("TRAE_IDE_TOKEN", "")
 
 # Mirror the headers Trae sends on every authenticated request. Empty values are
@@ -47,3 +51,24 @@ TRAE_HEADERS = {
     }.items()
     if value
 }
+
+
+def get_ide_token() -> str:
+    """Current IDE token in use by the running proxy."""
+    return _IDE_TOKEN
+
+
+def set_ide_token(token: str) -> None:
+    """Overwrite the IDE token in the running process (not persisted to .env).
+
+    Mutates TRAE_HEADERS in place so trae_client — which holds a live reference
+    to the same dict — picks up the new token on its next request.
+    """
+    global _IDE_TOKEN
+    _IDE_TOKEN = token
+    if token:
+        TRAE_HEADERS["authorization"] = f"Cloud-IDE-JWT {token}"
+        TRAE_HEADERS["x-ide-token"] = token
+    else:
+        TRAE_HEADERS.pop("authorization", None)
+        TRAE_HEADERS.pop("x-ide-token", None)

@@ -5,7 +5,7 @@ import { renderUsage } from './usage.js';
 import { closeHistoryDetail, historyPage, loadHistory, onHistoryFilter, renderHistory, setHistoryStatus, showHistoryDetail } from './history.js';
 import { copyModel, loadModels, refreshModels, renderModels, populateTestSelect } from './models.js';
 import { applyTestKey, runTest } from './chat.js';
-import { loadConfig, renderConfig, reveal } from './config.js';
+import { fetchHealth, healthBadgeHTML, loadConfig, loadHealth, onHealthClick, onTokenClick, refreshHealthBadge, renderConfig, reveal, saveInterval, saveToken } from './config.js';
 
 // One-time migration: remove legacy key storage
 sessionStorage.removeItem('tp_key');
@@ -29,9 +29,10 @@ function showSection(name) {
   document.getElementById('topbar-action').innerHTML = name === 'models'
     ? `<button class="btn-ghost">${ICON.refresh}Refresh</button>`
     : liveSection
-    ? `<span class="live-badge"><span class="live-dot"></span>Live</span>` : '';
+    ? healthBadgeHTML() : '';
   if (name === 'history') { state.historyOffset = 0; renderHistory(); }
-  if (liveSection) startAutoRefresh(); else stopAutoRefresh();
+  if (name === 'config') loadHealth();
+  if (liveSection) { refreshHealthBadge(); startAutoRefresh(); } else stopAutoRefresh();
 }
 
 function setPeriod(p) {
@@ -63,6 +64,7 @@ async function _doRefresh() {
   } else if (s === 'history') {
     await loadHistory();
   }
+  refreshHealthBadge();
 }
 
 function startAutoRefresh() {
@@ -108,6 +110,7 @@ async function boot() {
     }
   } catch {}
 
+  await fetchHealth();
   renderUsage();
   showSection('usage');
 }
@@ -178,10 +181,27 @@ function wireEvents() {
     if (e.target.id === 'tc-apikey' && e.key === 'Enter') applyTestKey();
   });
 
-  // Config reveal (delegated — injected by renderConfig)
-  document.getElementById('config-body').addEventListener('click', e => {
-    const btn = e.target.closest('.btn-reveal');
+  // Config: token controls + generic secret reveal (delegated — injected by renderConfig)
+  const configBody = document.getElementById('config-body');
+  configBody.addEventListener('click', e => {
+    if (e.target.closest('[data-token-reveal],[data-token-edit],[data-token-save],[data-token-cancel]')) {
+      onTokenClick(e);
+      return;
+    }
+    const btn = e.target.closest('[data-reveal]');
     if (btn) reveal(btn);
+  });
+  configBody.addEventListener('keydown', e => {
+    if (!e.target.matches('[data-token-input]')) return;
+    if (e.key === 'Enter') saveToken();
+    else if (e.key === 'Escape') loadConfig();
+  });
+
+  // Token health panel (delegated — injected by renderHealth)
+  const healthBody = document.getElementById('health-body');
+  healthBody.addEventListener('click', onHealthClick);
+  healthBody.addEventListener('keydown', e => {
+    if (e.target.matches('[data-interval-input]') && e.key === 'Enter') saveInterval();
   });
 
   // Model copy (delegated)

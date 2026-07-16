@@ -6,6 +6,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
+import config
+import health as token_health  # module name would clash with the /health route below
 from config import BIND_PORT, DASHBOARD_PASSWORD, SESSION_MAX_AGE
 from deps import require_auth, _client_ip, _is_https
 from usage import get_daily, get_history, get_history_detail, get_stats
@@ -83,13 +85,62 @@ async def get_config(_: None = Depends(require_auth)):
         "TRAE_DEVICE_CPU":       os.getenv("TRAE_DEVICE_CPU", ""),
         "TRAE_DEVICE_ID":        _mask("TRAE_DEVICE_ID"),
         "TRAE_DEVICE_TYPE":      os.getenv("TRAE_DEVICE_TYPE", ""),
-        "TRAE_IDE_TOKEN":        _mask("TRAE_IDE_TOKEN"),
+        "TRAE_IDE_TOKEN":        _MASKED if config.get_ide_token() else "(not set)",
         "TRAE_IDE_VERSION":      os.getenv("TRAE_IDE_VERSION", ""),
         "TRAE_IDE_VERSION_CODE": os.getenv("TRAE_IDE_VERSION_CODE", ""),
         "TRAE_MACHINE_ID":       _mask("TRAE_MACHINE_ID"),
         "TRAE_OS_VERSION":       os.getenv("TRAE_OS_VERSION", ""),
         "TRAE_PLUGIN_CHANNEL":   os.getenv("TRAE_PLUGIN_CHANNEL", "icube-ai"),
     }
+
+
+# ── IDE token (reveal + in-memory overwrite) ─────────────────────────────────
+
+class _TokenBody(BaseModel):
+    token: str
+
+
+@router.get("/config/ide-token")
+async def get_ide_token(_: None = Depends(require_auth)):
+    """Return the real token for the reveal toggle (auth-gated)."""
+    return {"token": config.get_ide_token()}
+
+
+@router.put("/config/ide-token")
+async def put_ide_token(body: _TokenBody, _: None = Depends(require_auth)):
+    """Overwrite the running proxy's IDE token (in-memory; not persisted to .env)."""
+    config.set_ide_token(body.token.strip())
+    return {"ok": True, "set": bool(config.get_ide_token())}
+
+
+# ── Token health check ───────────────────────────────────────────────────────
+
+_health = APIRouter(prefix="/trae-health", tags=["trae-health"])
+
+
+class _IntervalBody(BaseModel):
+    hours: float
+
+
+@_health.get("")
+async def health_status(_: None = Depends(require_auth)):
+    return token_health.get_state()
+
+
+@_health.post("/check")
+async def health_check_now(_: None = Depends(require_auth)):
+    return await token_health.run_check()
+
+
+@_health.put("/interval")
+async def health_set_interval(body: _IntervalBody, _: None = Depends(require_auth)):
+    if not (0 < body.hours <= 720):
+        raise HTTPException(status_code=400, detail="hours must be between 0 and 720")
+    token_health.set_interval(body.hours)
+    return token_health.get_state()
+
+
+router.include_router(_health)
 
 
 class _LoginBody(BaseModel):
